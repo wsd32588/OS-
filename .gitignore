@@ -1,0 +1,6 @@
+*.o
+*.d
+kernel.elf
+/test/tinyos_tests
+compile_commands.json
+.cache/

@@ -1,0 +1,47 @@
+#ifndef TINYOS_TRAP_OFFSETS_H
+#define TINYOS_TRAP_OFFSETS_H
+
+#define TRAP_FRAME_RA_OFFSET        0
+#define TRAP_FRAME_GP_OFFSET        8
+#define TRAP_FRAME_TP_OFFSET        16
+
+#define TRAP_FRAME_T0_OFFSET        24
+#define TRAP_FRAME_T1_OFFSET        32
+#define TRAP_FRAME_T2_OFFSET        40
+
+#define TRAP_FRAME_S0_OFFSET        48
+#define TRAP_FRAME_S1_OFFSET        56
+
+#define TRAP_FRAME_A0_OFFSET        64
+#define TRAP_FRAME_A1_OFFSET        72
+#define TRAP_FRAME_A2_OFFSET        80
+#define TRAP_FRAME_A3_OFFSET        88
+#define TRAP_FRAME_A4_OFFSET        96
+#define TRAP_FRAME_A5_OFFSET        104
+#define TRAP_FRAME_A6_OFFSET        112
+#define TRAP_FRAME_A7_OFFSET        120
+
+#define TRAP_FRAME_S2_OFFSET        128
+#define TRAP_FRAME_S3_OFFSET        136
+#define TRAP_FRAME_S4_OFFSET        144
+#define TRAP_FRAME_S5_OFFSET        152
+#define TRAP_FRAME_S6_OFFSET        160
+#define TRAP_FRAME_S7_OFFSET        168
+#define TRAP_FRAME_S8_OFFSET        176
+#define TRAP_FRAME_S9_OFFSET        184
+#define TRAP_FRAME_S10_OFFSET       192
+#define TRAP_FRAME_S11_OFFSET       200
+
+#define TRAP_FRAME_T3_OFFSET        208
+#define TRAP_FRAME_T4_OFFSET        216
+#define TRAP_FRAME_T5_OFFSET        224
+#define TRAP_FRAME_T6_OFFSET        232
+
+#define TRAP_FRAME_SEPC_OFFSET      240
+#define TRAP_FRAME_SSTATUS_OFFSET   248
+#define TRAP_FRAME_SCAUSE_OFFSET    256
+#define TRAP_FRAME_STVAL_OFFSET     264
+
+#define TRAP_FRAME_SIZE             272
+
+#endif
