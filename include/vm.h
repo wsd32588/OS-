@@ -46,8 +46,31 @@
 #define SV39_PTE_A      (UINT64_C(1) << 6)
 #define SV39_PTE_D      (UINT64_C(1) << 7)
 
+/* 叶子 PTE 允许出现的权限位（不含 V 和 RSW）；sv39_map_page 用它拒绝非法 flags。 */
+#define SV39_PTE_LEAF_FLAG_MASK \
+    (SV39_PTE_R | SV39_PTE_W | SV39_PTE_X | SV39_PTE_U | \
+     SV39_PTE_G | SV39_PTE_A | SV39_PTE_D)
+
 /* 低 8 位（V..D）的标志掩码；RSW（bit 8..9）不在其中。 */
 #define SV39_PTE_FLAG_MASK UINT64_C(0xff)
+
+/*
+ *错误码
+*/
+/* 成功。 */
+#define SV39_OK                      0
+/* 参数非法：空指针、非 canonical、未对齐、flags 非法等。 */
+#define SV39_ERR_INVALID_ARGUMENT   -1
+/* 分配中间级页表时 PMM 没有可用页。 */
+#define SV39_ERR_NO_MEMORY          -2
+/* 目标 VA 已经有映射。 */
+#define SV39_ERR_ALREADY_MAPPED     -3
+/* 走到 1GB/2MB 大页叶 PTE，无法继续拆成 4KB。 */
+#define SV39_ERR_INTERMEDIATE_LEAF  -4
+/* 查询时中间 PTE 无效，或叶子不存在。 */
+#define SV39_ERR_NOT_MAPPED         -5
+/* 页表中出现非法 PTE（例如 R=0、W=1）。 */
+#define SV39_ERR_INVALID_PTE        -6
 
 /* 64 位 PTE：低 10 位 flags，中间 44 位 PPN。 */
 typedef uint64_t Sv39Pte;
@@ -56,6 +79,28 @@ typedef uint64_t Sv39Pte;
 typedef struct {
     Sv39Pte entries[SV39_PTE_COUNT];
 }Sv39PageTable;
+
+/* 从 PMM 分配一张清零的根页表；失败返回 NULL。 */
+/* 创建一个Sv39 页表 */
+Sv39PageTable* sv39_create_page_table(void);
+
+/* 建立 4 KiB 页映射 va -> pa；成功返回 SV39_OK，失败返回负错误码。 */
+/* 建立/修改页映射 */
+int sv39_map_page(
+    Sv39PageTable* root,
+    uint64_t virtual_address,
+    uint64_t physical_address,
+    uint64_t flags
+);
+
+/* 查询 4 KiB 页映射；physical_address_out 返回“页基址 | 页内偏移”。 */
+/* 查询/模拟地址翻译 */
+int sv39_query_page(
+    const Sv39PageTable* root,
+    uint64_t virtual_address,
+    uint64_t* physical_address_out,
+    uint64_t* flags_out
+);
 
 /* 编译期保证页表大小恰好是一页。 */
 _Static_assert(
