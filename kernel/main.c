@@ -4,6 +4,7 @@
 #include "sched.h"
 #include "pmm.h"
 #include "vm.h"
+#include "vm_arch.h"
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -207,6 +208,23 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
     );
     trap_init();
     uart_puts("Trap handler initialized.\n");
+
+    uart_puts("Activating Sv39 paging...\n");
+
+    if (sv39_activate(kernel_root) != SV39_OK) {
+        uart_puts("SV39 activation failed. \n");
+
+        for (;;){
+            asm volatile("wfi");
+        }
+    }
+
+    uint64_t satp_value =
+        sv39_read_satp();
+
+    uart_puts("Paging enabled. satp: ");
+    uart_put_hex((unsigned long)satp_value);
+    uart_putchar('\n');
 
     sched_init();
     int task_a_id = task_create(task_a);

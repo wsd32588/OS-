@@ -25,6 +25,7 @@
 - `kernel/timer.c`、`kernel/sbi.c`：读取 `time`，通过 SBI TIME 扩展设置下一次定时器。
 - `kernel/pmm.c`：以链接后的内核末尾为起点、Device Tree 地址为保守上界，提供按 4 KiB 对齐的物理页分配；顺序区域之外还有 intrusive free list，分配时优先复用释放页并在返回前清零。
 - `kernel/vm.c`：提供 Sv39 PTE 编解码、canonical 地址判断、三级 4 KiB 页表遍历以及单页映射/查询；中间页表由 PMM 分配。
+- `kernel/vm_arch.c`：RISC-V 专用的 `satp` 激活、`sfence.vma` 和 `satp` 读取；不参与宿主测试编译。
 - `test/`：宿主机测试入口及 PMM 测试；使用页对齐宿主虚拟内存验证不依赖 RISC-V 特权指令的算法。
 - `kernel/sched.c`：最多两个任务、每任务 4 KiB 栈、READY/RUNNING/DEAD 状态、轮转抢占。
 - `drivers/uart.c`：直接访问 QEMU virt 的 16550 UART MMIO。
@@ -57,8 +58,10 @@
 - PMM 临时测试已从 `kernel_main()` 移到 `test/`，内核启动只保留初始化及可用页日志。`make test` 用宿主机分配的 32 MiB 页对齐虚拟内存完成基本边界检查、清零/复用/重复释放检查，以及固定随机种子的 20,000 次分配释放压力测试；全部通过。随后 `make -B`、`git diff --check` 和 5 秒 QEMU 回归通过，QEMU 初始化报告 `0x7bf8` 个可用页并正常进入调度。
 - clangd 21 与 Bear 3.1.6 已安装。编译数据库必须在同一次 Bear 捕获中执行交叉内核构建和宿主测试构建；否则后一次宿主数据库会遗漏 `main.c`、trap、scheduler 和 UART。`make compdb` 现会捕获两套构建，当前数据库有 15 条记录。不要为 clangd 启用 `--query-driver`：项目使用软浮点 `lp64`，而 Ubuntu 的 RISC-V glibc 交叉头只带 `lp64d` stubs，查询驱动会错误引入 glibc 并报告缺少 `gnu/stubs-lp64.h`。clangd 可从交叉编译器名字自动识别 RISC-V 目标，并使用自己的 freestanding 标准头；宿主测试仍按 `/usr/bin/cc` 参数解析。
 - 2026-09-29：Sv39 纯逻辑已实现并通过宿主测试。覆盖 PTE 编解码、canonical 地址、VPN 提取、非法 PTE、重复映射、页内偏移，以及 4096 个页面的确定性映射/查询；`make -B test` 无警告且全部通过。
-- 内核已用真实 PMM 构造但尚未激活恒等映射页表：映射内核 `[__kernel_start, __kernel_end)`、PMM 区域 `[__kernel_end, device_tree)` 和 UART 页面 `0x10000000`。根页表位于 `0x80208000`，软件查询确认关键地址 VA==PA。
-- 构造页表后执行 `make -B` 成功，唯一链接警告仍是 RWX LOAD 段；8 秒 QEMU 回归继续看到 timer tick、B 返回和 A 继续运行。当前仍为 `satp.MODE=Bare`，该回归只证明建表没有破坏现有内核，不代表硬件分页已启用。
+- 内核已用真实 PMM 构造恒等映射页表：映射内核 `[__kernel_start, __kernel_end)`、PMM 区域 `[__kernel_end, device_tree)` 和 UART 页面 `0x10000000`，软件查询确认关键地址 VA==PA。
+- 2026-09-29 已在 QEMU 真正启用 Sv39。当前内核范围为 `[0x80200000, 0x80209000)`，根页表为 `0x80209000`；读取 `satp` 得到 `0x8000000000080209`，其中 MODE=8 且 PPN=`0x80209` 与根页表一致。分页启用后仍能打印、接收 timer interrupt、运行 A/B、处理 B 返回并继续运行 A，证明当前代码、栈、UART、trap 和调度所需内存均已覆盖。
+- `SATP_PPN_MASK` 的括号警告已消除，激活接口已统一命名为 `sv39_activate`。当前强制编译没有 C/汇编警告；链接器原有 RWX LOAD 段警告仍在。
+- 2026-09-29 已临时读取 canonical 但未映射的 `0x40000000`，QEMU 按预期进入 S-mode trap：`scause=13`（load page fault），`stval=0x40000000`。故障注入随后已移除，重新强制构建和 8 秒 QEMU 回归通过，分页后的 timer、任务切换和任务返回行为恢复正常。
 
 已验证定时器抢占及“B 返回后由下一次 timer tick 换出”的路径；无效的 S-mode `task_yield()` 接口已移除。
 
@@ -101,10 +104,10 @@ TrapFrame 的汇编偏移和总大小以 `include/trap_offsets.h` 为单一来�
 
 按优先级建议：
 
-1. 把 RISC-V CSR 操作隔离到不参与宿主测试的 `kernel/vm_arch.c`，实现最小 `satp` 激活与读取接口。
-2. 在 trap 入口已经初始化、timer 尚未启动时启用现有恒等映射；QEMU 验证 `satp.MODE=8`、UART、trap、timer 和调度仍工作。
-3. 分页稳定后再用真实缺页访问验证 instruction/load/store page fault，并随后拆分 ELF 段权限。
-4. 更晚再处理真正的 idle task、每任务地址空间、U-mode 和 ELF 装载。
+1. 拆分链接脚本中的页对齐段边界，并按 `.text` RX、`.rodata` R、`.data/.bss` RW 构造内核 PTE，消除软件页表中的内核 RWX 映射。
+2. 分别做一次临时写只读页和从不可执行页取指的权限故障实验，记录后移除并回归。
+3. 再决定先实现页表解除映射/回收，还是进入每任务地址空间与 U-mode 准备。
+4. 更晚再处理真正的 idle task、ELF 装载和文件系统。
 
 ## 常用命令
 
@@ -122,6 +125,6 @@ git status --short --branch
 
 ## 建议的下一次会话目标
 
-下一阶段只做 Sv39 的硬件激活：将 `satp`/`sfence.vma` 放在单独的 RISC-V 文件中，不加入宿主测试；利用现有恒等映射让写入 `satp` 后的下一条指令、当前栈、trap 入口和 UART 地址保持不变。确认 QEMU 调度回归及 GDB 中 `satp.MODE=8` 后，才进入真实 page fault 和段权限验证。当前不要展开 U-mode、ELF、C++ runtime 或其他仓库集成。
+下一阶段拆分内核段权限：让链接脚本导出页对齐的 text、rodata、data/bss 边界，分别用 RX、R、RW 建立恒等映射；保留 PMM 区域和 UART 为 RW。先用 `readelf`/软件查询验证布局和 PTE flags，再在 QEMU 做临时权限 page fault 实验。当前不要展开 U-mode、ELF、C++ runtime 或其他仓库集成。
 
 完成本次 `task_yield()` 实验后，必须整理一份作者可独立重复的 QEMU + `gdb-multiarch` 调试流程，并让作者实际操作一次。至少包括启动 `make debug`、连接 `target remote :2600`、符号/地址断点、`continue`、`stepi`/`nexti`、反汇编、查看通用寄存器与 RISC-V CSR、检查调用栈，以及安全退出 QEMU/GDB。目标是让作者能够脱离 AI 复现本次判断。
