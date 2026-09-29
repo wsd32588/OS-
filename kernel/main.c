@@ -8,6 +8,12 @@
 
 extern char __kernel_start[];
 extern char __kernel_end[];
+extern char __text_start[];
+extern char __text_end[];
+extern char __rodata_start[];
+extern char __rodata_end[];
+extern char __data_start[];
+extern char __data_end[];
 
 static void delay(void) {
     for (volatile unsigned long i = 0;
@@ -64,20 +70,23 @@ static int map_identity_range(
 
 static int identity_mapping_is_present(
     const Sv39PageTable* root,
-    uint64_t address
+    uint64_t address,
+    uint64_t expected_flags
 ) {
     uint64_t physical_address = 0;
-    uint64_t flags = 0;
+    uint64_t actual_flags = 0;
 
     int result = sv39_query_page(
         root,
         address,
         &physical_address,
-        &flags
+        &actual_flags
     );
 
     return result == SV39_OK &&
-        physical_address == address;
+        physical_address == address &&
+        actual_flags ==
+            (expected_flags | SV39_PTE_V);
 }
 
 void kernel_main(unsigned long hart_id, const void* device_tree) {
@@ -118,12 +127,14 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
         }
     }
 
-    const uint64_t kernel_flags =
+    const uint64_t text_flags =
         SV39_PTE_R |
-        SV39_PTE_W |
         SV39_PTE_X |
-        SV39_PTE_A |
-        SV39_PTE_D;
+        SV39_PTE_A;
+
+    const uint64_t rodata_flags =
+        SV39_PTE_R |
+        SV39_PTE_A;
 
     const uint64_t writable_flags =
         SV39_PTE_R |
@@ -131,15 +142,47 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
         SV39_PTE_A |
         SV39_PTE_D;
 
-    int mapping_result = map_identity_range(kernel_root,
-        (uintptr_t)__kernel_start,
-        (uintptr_t)__kernel_end,
-        kernel_flags);
+    int mapping_result = map_identity_range(
+        kernel_root,
+        (uintptr_t)__text_start,
+        (uintptr_t) __text_end,
+        text_flags
+    );
 
     if (mapping_result != SV39_OK) {
-        uart_puts("Kernel identity mapping failed.\n");
+        uart_puts("Kernel text mapping failed");
+
+        for(;;) {
+            asm volatile("wfi");
+        }
+    }
+
+    mapping_result = map_identity_range(
+        kernel_root,
+        (uintptr_t) __rodata_start,
+        (uintptr_t) __rodata_end,
+        rodata_flags
+    );
+
+    if (mapping_result != SV39_OK) {
+        uart_puts("Kernel rodata mapping failed.\n");
 
         for (;;) {
+            asm volatile("wfi");
+        }
+    }
+
+        mapping_result = map_identity_range(
+        kernel_root,
+        (uintptr_t)__data_start,
+        (uintptr_t) __data_end,
+        writable_flags
+    );
+
+    if (mapping_result != SV39_OK) {
+        uart_puts("Kernel data mapping failed");
+
+        for(;;) {
             asm volatile("wfi");
         }
     }
@@ -182,15 +225,28 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
 
     if (!identity_mapping_is_present(
         kernel_root,
-        (uintptr_t)__kernel_start
+        (uintptr_t)__text_start,
+        text_flags
     ) ||
     !identity_mapping_is_present(
         kernel_root,
-        (uintptr_t)kernel_root
+        (uintptr_t)__rodata_start,
+        rodata_flags
     ) ||
     !identity_mapping_is_present(
         kernel_root,
-        uart_page
+        (uint64_t)__data_start,
+        writable_flags
+    )||
+    !identity_mapping_is_present(
+        kernel_root,
+        (uint64_t)kernel_root,
+        writable_flags
+    )||
+    !identity_mapping_is_present(
+        kernel_root,
+        uart_page,
+        writable_flags
     )) {
         uart_puts("Kernel page table verification failed.\n");
 
