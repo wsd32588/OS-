@@ -1,10 +1,8 @@
 #include "test_vm.h"
 
-#include <stdint.h>
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "pmm.h"
 #include "vm.h"
@@ -18,6 +16,18 @@ static int fail(
     return -1;
 }
 
+static void print_u64_value(FILE* stream, uint64_t value) {
+    fprintf(stream, "%"PRIu64, value);
+
+    /*
+     * 错误码是负的 int，但 CHECK_EQ 统一按 uint64_t 比较；
+     * 这个函数额外打印它的有符号解释，避免看到 18446744073709551611。
+     */
+    if (value > (uint64_t)INT64_MAX) {
+        fprintf(stream, " (signed: %"PRId64")", (int64_t)value);
+    }
+}
+
 static int fail_eq_u64(
     uint64_t actual,
     uint64_t expected,
@@ -29,15 +39,16 @@ static int fail_eq_u64(
     fprintf(
         stderr,
         "[FAIL] %s == %s at %s:%lu\n"
-        "    actual:       %"PRIu64"\n"
-        "    expected:     %"PRIu64"\n",
+        "    actual:       ",
         actual_expression,
         expected_expression,
         file,
-        line,
-        actual,
-        expected
+        line
     );
+    print_u64_value(stderr, actual);
+    fprintf(stderr, "\n    expected:     ");
+    print_u64_value(stderr, expected);
+    fprintf(stderr, "\n");
 
     return -1;
 }
@@ -175,12 +186,11 @@ static int test_sv39_map_and_query(void) {
      *    所以这里可以用真实的 pmm_alloc_page()。
      */
     enum { REGION_PAGES = 64 };
-    size_t region_size = REGION_PAGES * SV39_PAGE_SIZE;
-    void *region = aligned_alloc(SV39_PAGE_SIZE, region_size);
-    CHECK(region != NULL);
+    static uint8_t memory_pool[REGION_PAGES * SV39_PAGE_SIZE]
+        __attribute__((aligned(SV39_PAGE_SIZE)));
+    void *region = memory_pool;
 
-    if (pmm_init(region, (unsigned char *)region + region_size) != 0) {
-        free(region);
+    if (pmm_init(region, memory_pool + sizeof(memory_pool)) != 0) {
         return fail("pmm_init for vm test", __FILE__, __LINE__);
     }
 
@@ -272,7 +282,6 @@ static int test_sv39_map_and_query(void) {
     CHECK(sv39_query_page(root, va, &out_pa, NULL)
           == SV39_ERR_INVALID_ARGUMENT);
 
-    free(region);
     return 0;
 }
 
@@ -282,14 +291,11 @@ static int test_sv39_mapping_stress(void) {
         MAPPING_COUNT = 4096
     };
 
-    const size_t region_size = REGION_PAGES * SV39_PAGE_SIZE;
+    static uint8_t memory_pool[REGION_PAGES * SV39_PAGE_SIZE]
+        __attribute__((aligned(SV39_PAGE_SIZE)));
+    void* region = memory_pool;
 
-    void* region = aligned_alloc(SV39_PAGE_SIZE, region_size);
-
-    CHECK(region != NULL);
-
-    if (pmm_init(region, (unsigned char*)region + region_size) != 0) {
-        free(region);
+    if (pmm_init(region, memory_pool + sizeof(memory_pool)) != 0) {
         return fail("pmm_init for SV39 stress test",
             __FILE__, __LINE__);
     }
@@ -300,7 +306,6 @@ static int test_sv39_mapping_stress(void) {
 
     Sv39PageTable* root = sv39_create_page_table();
     if (root == NULL) {
-        free(region);
         return fail("could not allocate SV39 root table",
             __FILE__, __LINE__);
     }
@@ -367,19 +372,19 @@ static int test_sv39_mapping_stress(void) {
             (uint64_t)i * SV39_PAGE_SIZE +
             page_offset;
 
-        uint64_t actual_physicl_address = 0;
+        uint64_t actual_physical_address = 0;
         uint64_t actual_flags = 0;
 
         CHECK(
             sv39_query_page(root,
                 virtual_address,
-                &actual_physicl_address,
+                &actual_physical_address,
                 &actual_flags
             ) == SV39_OK
         );
 
         CHECK_EQ(
-            actual_physicl_address,
+            actual_physical_address,
             expected_physical_address
         );
 
@@ -427,11 +432,10 @@ static int test_sv39_mapping_stress(void) {
         malformed_pte
     );
 
-    free(region);
     return 0;
 }
 
-int test_sv39_corrupted_pte_rejection(void) {
+static int test_sv39_corrupted_pte_rejection(void) {
     /* 初始化测试物理内存并分配根页表 */
     static uint8_t memory_pool[8 * SV39_PAGE_SIZE] __attribute__((aligned(4096)));
     CHECK_EQ(pmm_init(memory_pool, memory_pool + sizeof(memory_pool)), 0);
@@ -460,6 +464,15 @@ int test_sv39_corrupted_pte_rejection(void) {
 
     l0_table->entries[vpn0] = SV39_PTE_V | SV39_PTE_W;
 
+    CHECK_EQ(
+        sv39_unmap_page(root, va2),
+        SV39_ERR_INVALID_PTE
+    );
+
+    CHECK_EQ(
+        l0_table->entries[vpn0],
+        SV39_PTE_V | SV39_PTE_W
+    );
     /* 记录映射前的PMM可用页数 */
     unsigned long pmm_pages_before = pmm_available_pages();
 
@@ -477,7 +490,167 @@ int test_sv39_corrupted_pte_rejection(void) {
     uint64_t query_pa = 0, query_flags = 0;
     CHECK_EQ(sv39_query_page(root, va2, &query_pa, &query_flags), SV39_ERR_NOT_MAPPED);
 
+    l0_table->entries[vpn0] = SV39_PTE_V;
+
+    CHECK_EQ(
+        sv39_unmap_page(root, va2),
+        SV39_ERR_NOT_MAPPED
+    );
+
+    CHECK_EQ(
+        l0_table->entries[vpn0],
+        SV39_PTE_V
+    );
+
     return 0; // 测试通过
+}
+
+static int test_sv39_unmap_page(void) {
+    /* 初始化物理内存并分配根页表 */
+    static uint8_t memory_pool[
+        8 * SV39_PAGE_SIZE
+    ] __attribute__((aligned(SV39_PAGE_SIZE)));
+
+    CHECK_EQ(
+        pmm_init(
+            memory_pool,
+            memory_pool + sizeof(memory_pool)
+        ),
+        0
+    );
+    Sv39PageTable* root = sv39_create_page_table();
+    CHECK(root != NULL);
+
+    /* 选定同一个根页表内相邻4KiB的虚拟地址 */
+    const uint64_t va1 = UINT64_C(0x400000);
+    const uint64_t va2 = va1 + SV39_PAGE_SIZE;
+
+    const uint64_t pa1 = UINT64_C(0x81000000);
+    const uint64_t pa2 = UINT64_C(0x82000000);
+    CHECK_EQ(
+        sv39_unmap_page(NULL, va1),
+        SV39_ERR_INVALID_ARGUMENT
+    );
+
+    CHECK_EQ(
+        sv39_unmap_page(
+            root,
+            UINT64_C(0x0000004000000000)
+        ),
+        SV39_ERR_INVALID_ARGUMENT
+    );
+
+    /* 检查unmap映射时候是否隐式建立新的L1/L0页表 */
+    const uint64_t never_mapped_va =
+        UINT64_C(0x400000000);
+    unsigned long pages_before_missing_unmap =
+        pmm_available_pages();
+
+    CHECK_EQ(
+        sv39_unmap_page(root, never_mapped_va),
+        SV39_ERR_NOT_MAPPED
+    );
+
+    CHECK_EQ(
+        pmm_available_pages(),
+        pages_before_missing_unmap
+    );
+
+    const uint64_t large_page_va =
+        UINT64_C(0x80000000);
+    unsigned long large_page_index =
+        sv39_vpn_index(large_page_va, 2);
+
+    Sv39Pte large_page_pte =
+        sv39_make_pte(
+            UINT64_C(0x80000000),
+            SV39_PTE_V |SV39_PTE_R |SV39_PTE_A);
+    root->entries[large_page_index] =large_page_pte;
+
+    CHECK_EQ(
+        sv39_unmap_page(root, large_page_va),
+        SV39_ERR_INTERMEDIATE_LEAF
+    );
+
+    CHECK_EQ(
+        root->entries[large_page_index],
+        large_page_pte
+    );
+
+    /* 未对齐的 VA 必须被 unmap 拒绝 */
+    CHECK_EQ(sv39_unmap_page(root, va1 + 1), SV39_ERR_INVALID_ARGUMENT);
+
+    /* 建立合法基准映射并检查是否正确映射到相关地址 */
+    int map1 = sv39_map_page(root,
+        va1,
+        pa1,
+        SV39_PTE_R);
+    CHECK_EQ(map1, SV39_OK);
+
+    int map2 = sv39_map_page(root,
+        va2,
+        pa2,
+        SV39_PTE_R);
+    CHECK_EQ(map2, SV39_OK);
+
+    uint64_t physical_address_out = 0;
+    uint64_t flag_out = 0;
+
+    /* 查询映射是否正确，是否造成映射物理地址与实际结果不同以及权限检查 */
+    CHECK_EQ(
+        sv39_query_page(root, va1, &physical_address_out, &flag_out), SV39_OK);
+    CHECK_EQ(pa1, physical_address_out);
+    CHECK_EQ(SV39_PTE_V | SV39_PTE_R, flag_out);
+
+    CHECK_EQ(
+        sv39_query_page(root, va2, &physical_address_out, &flag_out), SV39_OK);
+    CHECK_EQ(pa2, physical_address_out);
+    CHECK_EQ(SV39_PTE_V | SV39_PTE_R, flag_out);
+
+    /* 存下分配后的可用页表数量 */
+    unsigned long pages_before_unmap = pmm_available_pages();
+
+    /* 解除va1相关的映射表并检查 */
+    CHECK_EQ(sv39_unmap_page(root, va1), SV39_OK);
+    CHECK_EQ(
+        sv39_query_page(root, va1, &physical_address_out, &flag_out), SV39_ERR_NOT_MAPPED);
+
+    /* 检查是否影响到va2的映射 */
+    CHECK_EQ(sv39_query_page(root, va2, &physical_address_out, &flag_out), SV39_OK);
+    CHECK_EQ(pa2, physical_address_out);
+    CHECK_EQ(SV39_PTE_V | SV39_PTE_R, flag_out);
+
+    /*  PMM可用页表必须等于pages_before-unmap */
+    CHECK_EQ(pmm_available_pages(), pages_before_unmap);
+    CHECK_EQ(sv39_unmap_page(root, va1), SV39_ERR_NOT_MAPPED);
+
+    /* 彻底解除邻居 va2 的映射，此时 root 下的所有叶子映射全部归零 */
+    CHECK_EQ(sv39_unmap_page(root, va2), SV39_OK);
+    CHECK_EQ(sv39_query_page(root, va2, &physical_address_out, &flag_out), SV39_ERR_NOT_MAPPED);
+
+    /* 在清空的地址映射上，强行把 va1 重新映射到邻居的 pa2  */
+    int remap_cross = sv39_map_page(root, va1, pa2, SV39_PTE_R);
+    CHECK_EQ(remap_cross, SV39_OK);
+
+    /* 再次使用 query 模块，验证 va1 的最新物理主人是不是变成了 pa2 */
+    CHECK_EQ(sv39_query_page(root, va1, &physical_address_out, &flag_out), SV39_OK);
+    CHECK_EQ(pa2, physical_address_out); /* 物理地址必须绝对等于 pa2，不能有任何旧地址污染 */
+    CHECK_EQ(SV39_PTE_V | SV39_PTE_R, flag_out);
+
+    CHECK_EQ(
+        sv39_map_page(root, va1, pa1, SV39_PTE_R),
+        SV39_ERR_ALREADY_MAPPED
+    );
+    CHECK_EQ(sv39_unmap_page(root, va1), SV39_OK);
+    CHECK_EQ(
+        sv39_unmap_page(root, va1),
+        SV39_ERR_NOT_MAPPED
+    );
+
+    /* 彻底擦除善后，保证测试结束后的绝对纯净 */
+    CHECK_EQ(sv39_query_page(root, va1, &physical_address_out, &flag_out), SV39_ERR_NOT_MAPPED);
+
+    return 0;
 }
 
 int test_vm(void) {
@@ -492,6 +665,9 @@ int test_vm(void) {
         return -1;
     }
     if(test_sv39_corrupted_pte_rejection() != 0) {
+        return -1;
+    }
+    if (test_sv39_unmap_page() != 0) {
         return -1;
     }
 

@@ -93,6 +93,15 @@ int sv39_map_page(
     uint64_t flags
 );
 
+/*
+ * 解除一个页对齐虚拟地址的 4 KiB 叶映射。
+ * 本函数不释放物理页或中间页表，也不刷新 TLB。
+ */
+int sv39_unmap_page(
+    Sv39PageTable *root,
+    uint64_t virtual_address
+);
+
 /* 查询 4 KiB 页映射；physical_address_out 返回“页基址 | 页内偏移”。 */
 /* 查询/模拟地址翻译 */
 int sv39_query_page(

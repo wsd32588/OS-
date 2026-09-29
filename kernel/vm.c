@@ -309,6 +309,46 @@ int sv39_map_page(Sv39PageTable *root,
     return SV39_OK;
 }
 
+int sv39_unmap_page(
+    Sv39PageTable *root,
+    uint64_t virtual_address
+) {
+    if (root == NULL ||
+        !sv39_virtual_address_is_canonical(
+            virtual_address) ||
+        (virtual_address & (SV39_PAGE_SIZE - 1U)) != 0) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    int error = SV39_OK;
+
+    Sv39Pte* leaf = sv39_walk_to_leaf(
+        root,
+        virtual_address,
+        0,
+        &error);
+
+    if (leaf == NULL) {
+        return error;
+    }
+
+    if ((*leaf & SV39_PTE_V) == 0) {
+        return SV39_ERR_NOT_MAPPED;
+    }
+
+    if (!sv39_pte_is_valid(*leaf)) {
+        return SV39_ERR_INVALID_PTE;
+    }
+
+    if (!sv39_pte_is_leaf(*leaf)) {
+        return SV39_ERR_NOT_MAPPED;
+    }
+
+    *leaf = 0;
+
+    return SV39_OK;
+}
+
 /*
  * 查询 va 的映射，返回：
  *   - physical_address_out: 翻译后的物理地址（页基址 | VA 的页内偏移）；
