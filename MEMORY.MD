@@ -17,7 +17,7 @@
 - 调度：`kernel/sched.c` 是两个静态 S-mode 任务的轮转抢占调度器，任务栈各 4 KiB，状态为 READY/RUNNING/DEAD。入口函数返回会经 trampoline 调用 `task_exit()`；全部任务结束时关闭 STIE 后停机。目前没有 idle task。
 - PMM：`kernel/pmm.c` 从页对齐的 `__kernel_end` 分配 4 KiB 页，以 Device Tree 地址为保守上界；支持清零、释放、intrusive free list、优先复用和重复释放检测。尚无并发保护。
 - 虚拟内存：`kernel/vm.c` 实现 Sv39 canonical 地址检查、VPN/PTE 编解码、三级 4 KiB 映射、查询、叶映射解除和空 L0/L1 页表回收；中间页表由 PMM 分配。`kernel/vm_arch.c` 负责 `satp`、`sfence.vma` 和 CSR 读取。
-- 当前使用恒等映射：内核、PMM 区域和 UART `0x10000000` 的 VA 等于 PA；没有 unmap、页表回收、ASID 或每任务地址空间。
+- 当前内核运行依赖恒等映射：内核、PMM 区域和 UART `0x10000000` 的 VA 等于 PA；已有 4 KiB 页的 map/unmap 和空 L0/L1 回收，但尚无 ASID 或每任务地址空间。
 - 测试：`test/` 在宿主机的页对齐内存上测试 PMM 和纯 Sv39 算法；RISC-V CSR、真实 page fault、trap 和调度只在 QEMU 验证。
 
 ## 已确认的关键事实
@@ -38,6 +38,7 @@
   - 2026-09-30 强制宿主测试、交叉构建和 8 秒 QEMU 回归通过；额外的 ASan/UBSan 宿主测试在关闭当前环境不支持的 leak 检测后通过。
   - `sv39_reclaim_empty_tables()` 已实现为与 unmap 分离的步骤：共享 L0 仍有叶映射时回收 0 页，某张 L0 变空时回收 1 页，最后一张 L0 及其 L1 都变空时回收 2 页，根页表始终保留；释放页已验证能由后续 map 复用。
   - 2026-09-30 回收阶段的强制宿主测试、ASan/UBSan、交叉构建、`git diff --check` 和 8 秒 QEMU 回归均通过。对活动页表必须遵循 unmap -> TLB flush -> reclaim 的顺序；目前尚未在内核运行路径调用回收接口。
+  - `sv39_flush_page()` 已封装当前 hart 的按地址 `sfence.vma`，拒绝非 canonical 或未对齐 VA。QEMU 中曾将 `0x40000000` 动态映射到 PMM 页并成功读写，随后按 unmap -> flush -> reclaim 顺序撤销，重新读取得到 `scause=13`、`stval=0x40000000`。临时探针已删除，正常调度回归通过。
 - `task_yield()` 已移除：当前任务在 S-mode，S-mode ECALL cause 9 没有由 OpenSBI 委托给 S-mode；旧代码的 `a7=1` 反而命中 legacy SBI console putchar。以后应在 U-mode syscall 或明确设计的内核同步调度入口中重新引入。
 
 ## Git 与工作区
@@ -48,18 +49,13 @@
 
 ## 下一步（只做这一批）
 
-为活动页表补齐按地址 TLB 刷新，并做一次受控的 QEMU 动态映射实验：
-
-1. 在 `vm_arch` 中加入页对齐 canonical VA 的按地址 `sfence.vma` 接口；纯页表层继续不包含 CSR/汇编。
-2. 明确调用顺序为 `sv39_unmap_page` -> 按地址 TLB flush -> `sv39_reclaim_empty_tables`，任何一步失败都要有可观察结果。
-3. 选一个不会覆盖内核恒等映射的临时 VA，映射到 PMM 分配页，在 QEMU 中读写验证；随后解除、刷新并验证访问触发 load page fault。
-4. 故障探针完成后移除，恢复正常调度回归；之后再决定进入每任务地址空间还是 U-mode 准备。
+把被打断时的 `sp` 显式加入 `TrapFrame`，并在 trap 入口/恢复与初始任务帧中正确保存和恢复。当前恢复路径依赖“frame 地址 + frame 大小”隐式得到 `sp`；先解除这个耦合，下一批才能用 `sscratch` 在 U-mode trap 时切换到独立内核栈。本批仍只运行 S-mode 任务，以定时抢占回归验证 `sp` 的完整保存/恢复。
 
 ## 已知限制
 
 - PMM 以内核末尾和 Device Tree 地址推断可用区，不解析 DTB 内存节点，也没有锁。
 - 当前页表依赖恒等映射才能直接解引用物理页表地址。
-- `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；空 L0/L1 可由独立接口回收，但活动页表尚无按地址 TLB flush 封装，也没有权限修改接口。
+- `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；空 L0/L1 可由独立接口回收，当前只有单 hart 本地 TLB flush，没有多 hart shootdown、ASID 或权限修改接口。
 - 调度器仅用于演示两个静态 S-mode 内核任务，没有 idle task、用户态隔离、syscall 或动态任务生命周期。
 
 ## 常用命令

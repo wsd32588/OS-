@@ -49,3 +49,20 @@ uint64_t sv39_read_satp(void) {
 
     return value;
 }
+
+int sv39_flush_page(uint64_t virtual_address) {
+    if (!sv39_virtual_address_is_canonical(
+            virtual_address) ||
+        (virtual_address & (SV39_PAGE_SIZE - 1U)) != 0) {
+            return SV39_ERR_INVALID_ARGUMENT;
+        }
+
+    asm volatile(
+        "sfence.vma %0, zero"
+        :
+        : "r"(virtual_address)
+        : "memory"
+    );
+
+    return SV39_OK;
+}
