@@ -39,6 +39,7 @@
   - `sv39_reclaim_empty_tables()` 已实现为与 unmap 分离的步骤：共享 L0 仍有叶映射时回收 0 页，某张 L0 变空时回收 1 页，最后一张 L0 及其 L1 都变空时回收 2 页，根页表始终保留；释放页已验证能由后续 map 复用。
   - 2026-09-30 回收阶段的强制宿主测试、ASan/UBSan、交叉构建、`git diff --check` 和 8 秒 QEMU 回归均通过。对活动页表必须遵循 unmap -> TLB flush -> reclaim 的顺序；目前尚未在内核运行路径调用回收接口。
   - `sv39_flush_page()` 已封装当前 hart 的按地址 `sfence.vma`，拒绝非 canonical 或未对齐 VA。QEMU 中曾将 `0x40000000` 动态映射到 PMM 页并成功读写，随后按 unmap -> flush -> reclaim 顺序撤销，重新读取得到 `scause=13`、`stval=0x40000000`。临时探针已删除，正常调度回归通过。
+  - `TrapFrame` 已扩展到 288 字节，显式保存被打断时的 `sp`，并用保留字段维持 16 字节对齐；`trap_restore` 不再用 frame 地址隐式推导 `sp`。2026-09-30 强制宿主测试、交叉构建和 8 秒 QEMU 回归通过，已覆盖 B 任务返回后再经 timer 切换并多次恢复 A。
 - `task_yield()` 已移除：当前任务在 S-mode，S-mode ECALL cause 9 没有由 OpenSBI 委托给 S-mode；旧代码的 `a7=1` 反而命中 legacy SBI console putchar。以后应在 U-mode syscall 或明确设计的内核同步调度入口中重新引入。
 
 ## Git 与工作区
@@ -49,7 +50,7 @@
 
 ## 下一步（只做这一批）
 
-把被打断时的 `sp` 显式加入 `TrapFrame`，并在 trap 入口/恢复与初始任务帧中正确保存和恢复。当前恢复路径依赖“frame 地址 + frame 大小”隐式得到 `sp`；先解除这个耦合，下一批才能用 `sscratch` 在 U-mode trap 时切换到独立内核栈。本批仍只运行 S-mode 任务，以定时抢占回归验证 `sp` 的完整保存/恢复。
+建立 `sscratch` 约定和 trap 入口的双路径：S-mode 运行时 `sscratch=0`，U-mode 运行时 `sscratch=当前任务内核栈顶`；从 U-mode trap 时先切到内核栈再构造 `TrapFrame`，从 S-mode trap 时继续使用当前内核栈。本批只搭建安全的栈切换机制并保持现有 S-mode 调度回归，不同时引入用户代码、用户页表或 syscall。
 
 ## 已知限制
 

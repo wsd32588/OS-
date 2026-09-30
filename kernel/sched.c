@@ -100,6 +100,9 @@ int task_create(void (*entry)(void)) {
     /*
     *任务栈顶人工放一个TrapFrame
     */
+
+    unsigned long initial_sp = stack_top;
+
     stack_top -= sizeof(struct trap_frame);
     struct trap_frame* frame =
         (struct trap_frame*)stack_top;
@@ -114,6 +117,8 @@ int task_create(void (*entry)(void)) {
         i++) {
             p[i] = 0;
         }
+
+    frame->sp = initial_sp;
     /*
     *sret后从task_trampoine 开始执行
     */

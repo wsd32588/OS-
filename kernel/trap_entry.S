@@ -44,6 +44,9 @@ trap_entry:
     sd t5, TRAP_FRAME_T5_OFFSET(sp)
     sd t6, TRAP_FRAME_T6_OFFSET(sp)
 
+    addi t0, sp, TRAP_FRAME_SIZE
+    sd t0, TRAP_FRAME_SP_OFFSET(sp)
+
     #保存trap CSR
     csrr t0, sepc
     sd t0, TRAP_FRAME_SEPC_OFFSET(sp)
@@ -111,7 +114,7 @@ trap_restore:
     ld t5, TRAP_FRAME_T5_OFFSET(sp)
     ld t6, TRAP_FRAME_T6_OFFSET(sp)
 
-    addi sp, sp, TRAP_FRAME_SIZE
+    ld sp, TRAP_FRAME_SP_OFFSET(sp)
 
     sret
 
