@@ -564,8 +564,8 @@ static int test_sv39_unmap_page(void) {
     Sv39Pte large_page_pte =
         sv39_make_pte(
             UINT64_C(0x80000000),
-            SV39_PTE_V |SV39_PTE_R |SV39_PTE_A);
-    root->entries[large_page_index] =large_page_pte;
+            SV39_PTE_V | SV39_PTE_R | SV39_PTE_A);
+    root->entries[large_page_index] = large_page_pte;
 
     CHECK_EQ(
         sv39_unmap_page(root, large_page_va),
@@ -653,6 +653,163 @@ static int test_sv39_unmap_page(void) {
     return 0;
 }
 
+static int test_sv39_reclaim_empty_tables(void) {
+    /*
+     * 8 页的小 PMM：root + L1 + L0_A + L0_B 之后剩 4 页。
+     * 用静态、页对齐的池，失败路径也不会泄漏。
+     */
+    static uint8_t memory_pool[8 * SV39_PAGE_SIZE]
+        __attribute__((aligned(SV39_PAGE_SIZE)));
+
+    CHECK_EQ(pmm_init(memory_pool, memory_pool + sizeof(memory_pool)), 0);
+    const unsigned long pages_initial = pmm_available_pages();
+
+    Sv39PageTable* root = sv39_create_page_table();
+    CHECK(root != NULL);
+
+    /*
+     * va1 和 va2 落在同一张 L0_A（同 VPN[2]/VPN[1]，不同 VPN[0]）；
+     * va3 落在同一张 L1 下的另一张 L0_B（同 VPN[2]，不同 VPN[1]）。
+     */
+    const uint64_t va1 = UINT64_C(0x00400000);
+    const uint64_t va2 = va1 + SV39_PAGE_SIZE;
+    const uint64_t va3 = va1 + (UINT64_C(1) << 21);
+
+    const uint64_t pa1 = UINT64_C(0x81000000);
+    const uint64_t pa2 = UINT64_C(0x82000000);
+    const uint64_t pa3 = UINT64_C(0x83000000);
+
+    CHECK_EQ(sv39_map_page(root, va1, pa1, SV39_PTE_R), SV39_OK);
+    CHECK_EQ(sv39_map_page(root, va2, pa2, SV39_PTE_R), SV39_OK);
+    CHECK_EQ(sv39_map_page(root, va3, pa3, SV39_PTE_R), SV39_OK);
+
+    /* 记录映射完成后的可用页数 */
+    const unsigned long pages_after_map = pmm_available_pages();
+
+    /* 记录 L1 / L0_A / L0_B 的地址，用于验证“没提前释放”和“被复用” */
+    const unsigned int vpn2 = sv39_vpn_index(va1, 2);
+    const unsigned int l1_index_va1 = sv39_vpn_index(va1, 1);
+    const unsigned int l1_index_va3 = sv39_vpn_index(va3, 1);
+
+    Sv39Pte* root_entry = &root->entries[vpn2];
+    CHECK(sv39_pte_is_valid(*root_entry));
+    CHECK(!sv39_pte_is_leaf(*root_entry));
+
+    Sv39PageTable* l1 =
+        (Sv39PageTable*)(uintptr_t)sv39_pte_physical_address(*root_entry);
+    const uintptr_t l1_address = (uintptr_t)l1;
+
+    Sv39Pte* l1_entry_l0_a = &l1->entries[l1_index_va1];
+    CHECK(sv39_pte_is_valid(*l1_entry_l0_a));
+    CHECK(!sv39_pte_is_leaf(*l1_entry_l0_a));
+    Sv39PageTable* l0_a =
+        (Sv39PageTable*)(uintptr_t)sv39_pte_physical_address(*l1_entry_l0_a);
+    const uintptr_t l0_a_address = (uintptr_t)l0_a;
+    const Sv39Pte l0_a_entry_before = *l1_entry_l0_a;
+
+    Sv39Pte* l1_entry_l0_b = &l1->entries[l1_index_va3];
+    CHECK(sv39_pte_is_valid(*l1_entry_l0_b));
+    CHECK(!sv39_pte_is_leaf(*l1_entry_l0_b));
+    Sv39PageTable* l0_b =
+        (Sv39PageTable*)(uintptr_t)sv39_pte_physical_address(*l1_entry_l0_b);
+    const uintptr_t l0_b_address = (uintptr_t)l0_b;
+
+    uint64_t pa_out = 0;
+    uint64_t flags_out = 0;
+
+    /* ---------- 1) unmap va1：va2 还在同一张 L0_A，不应回收 ---------- */
+    CHECK_EQ(sv39_unmap_page(root, va1), SV39_OK);
+    CHECK_EQ(sv39_reclaim_empty_tables(root, va1), SV39_OK);
+
+    CHECK_EQ(pmm_available_pages(), pages_after_map);
+    CHECK_EQ(*l1_entry_l0_a, l0_a_entry_before);   /* L0_A 没被释放/改动 */
+    CHECK_EQ(sv39_query_page(root, va1, &pa_out, &flags_out),
+             SV39_ERR_NOT_MAPPED);
+    CHECK_EQ(sv39_query_page(root, va2, &pa_out, &flags_out), SV39_OK);
+    CHECK_EQ(pa_out, pa2);
+    CHECK_EQ(sv39_query_page(root, va3, &pa_out, &flags_out), SV39_OK);
+    CHECK_EQ(pa_out, pa3);
+
+    /* ---------- 2) unmap va2：L0_A 变空被释放，L1 仍指向 L0_B ---------- */
+    CHECK_EQ(sv39_unmap_page(root, va2), SV39_OK);
+    CHECK_EQ(sv39_reclaim_empty_tables(root, va2), SV39_OK);
+
+    CHECK_EQ(pmm_available_pages(), pages_after_map + 1);
+    CHECK_EQ(*l1_entry_l0_a, 0);                   /* 指向 L0_A 的项清 0 */
+    CHECK_EQ((uintptr_t)sv39_pte_physical_address(*root_entry), l1_address);
+    CHECK_EQ(sv39_query_page(root, va2, &pa_out, &flags_out),
+             SV39_ERR_NOT_MAPPED);
+    CHECK_EQ(sv39_query_page(root, va3, &pa_out, &flags_out), SV39_OK);
+    CHECK_EQ(pa_out, pa3);
+
+    /* ---------- 3) unmap va3：L0_B 和 L1 都变空，均被释放 ---------- */
+    CHECK_EQ(sv39_unmap_page(root, va3), SV39_OK);
+    CHECK_EQ(sv39_reclaim_empty_tables(root, va3), SV39_OK);
+
+    CHECK_EQ(pmm_available_pages(), pages_after_map + 3);
+    CHECK_EQ(pmm_available_pages(), pages_initial - 1);   /* 只剩 root */
+    CHECK_EQ(*root_entry, 0);
+    CHECK_EQ(sv39_query_page(root, va3, &pa_out, &flags_out),
+             SV39_ERR_NOT_MAPPED);
+
+    CHECK_EQ(sv39_reclaim_empty_tables(NULL, va1),
+            SV39_ERR_INVALID_ARGUMENT);
+
+    CHECK_EQ(sv39_reclaim_empty_tables(root, va1 + 1),
+            SV39_ERR_INVALID_ARGUMENT);
+
+    CHECK_EQ(sv39_reclaim_empty_tables(
+            root,
+            UINT64_C(0x0000004000000000)
+        ),
+        SV39_ERR_INVALID_ARGUMENT);
+
+    /* ---------- 4) 重新 map va1：应该复用 free list 里的 L1 和 L0 ---------- */
+    CHECK_EQ(sv39_map_page(root, va1, pa1, SV39_PTE_R), SV39_OK);
+    CHECK_EQ(pmm_available_pages(), pages_after_map + 1);  /* 重新消耗 2 页 */
+
+    CHECK_EQ(sv39_query_page(root, va1, &pa_out, &flags_out), SV39_OK);
+    CHECK_EQ(pa_out, pa1);
+    CHECK_EQ(flags_out, SV39_PTE_V | SV39_PTE_R);
+
+    /* 新的 L1 / L0 必须来自刚才释放掉的三页之一，证明 free list 真的被复用 */
+    CHECK(sv39_pte_is_valid(*root_entry));
+    CHECK(!sv39_pte_is_leaf(*root_entry));
+    const uintptr_t new_l1_address =
+        (uintptr_t)sv39_pte_physical_address(*root_entry);
+    CHECK(new_l1_address == l1_address ||
+          new_l1_address == l0_a_address ||
+          new_l1_address == l0_b_address);
+
+    Sv39PageTable* new_l1 =
+        (Sv39PageTable*)(uintptr_t)new_l1_address;
+    Sv39Pte* new_l0_entry = &new_l1->entries[l1_index_va1];
+    CHECK(sv39_pte_is_valid(*new_l0_entry));
+    CHECK(!sv39_pte_is_leaf(*new_l0_entry));
+    const uintptr_t new_l0_address =
+        (uintptr_t)sv39_pte_physical_address(*new_l0_entry);
+    CHECK(new_l0_address == l1_address ||
+          new_l0_address == l0_a_address ||
+          new_l0_address == l0_b_address);
+    CHECK(new_l0_address != new_l1_address);
+
+    const uint64_t missing_va = UINT64_C(0x400000000);
+    unsigned long pages_before_missing =
+        pmm_available_pages();
+
+    CHECK_EQ(
+        sv39_reclaim_empty_tables(root, missing_va),
+        SV39_ERR_NOT_MAPPED
+    );
+
+    CHECK_EQ(
+        pmm_available_pages(),
+        pages_before_missing
+    );
+
+    return 0;
+}
+
 int test_vm(void) {
     if (test_size() != 0) return -1;
     if (test_canonical() != 0) return -1;
@@ -668,6 +825,10 @@ int test_vm(void) {
         return -1;
     }
     if (test_sv39_unmap_page() != 0) {
+        return -1;
+    }
+
+    if (test_sv39_reclaim_empty_tables() != 0) {
         return -1;
     }
 

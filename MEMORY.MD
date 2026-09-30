@@ -16,7 +16,7 @@
 - 中断与时钟：`kernel/trap.c` 处理 S timer interrupt；`kernel/timer.c` 经 SBI TIME 设置下一次中断；未知 trap 打印 `scause`、`sepc`、`stval` 后停机。
 - 调度：`kernel/sched.c` 是两个静态 S-mode 任务的轮转抢占调度器，任务栈各 4 KiB，状态为 READY/RUNNING/DEAD。入口函数返回会经 trampoline 调用 `task_exit()`；全部任务结束时关闭 STIE 后停机。目前没有 idle task。
 - PMM：`kernel/pmm.c` 从页对齐的 `__kernel_end` 分配 4 KiB 页，以 Device Tree 地址为保守上界；支持清零、释放、intrusive free list、优先复用和重复释放检测。尚无并发保护。
-- 虚拟内存：`kernel/vm.c` 实现 Sv39 canonical 地址检查、VPN/PTE 编解码、三级 4 KiB 映射、查询和叶映射解除；中间页表由 PMM 分配。`kernel/vm_arch.c` 负责 `satp`、`sfence.vma` 和 CSR 读取。
+- 虚拟内存：`kernel/vm.c` 实现 Sv39 canonical 地址检查、VPN/PTE 编解码、三级 4 KiB 映射、查询、叶映射解除和空 L0/L1 页表回收；中间页表由 PMM 分配。`kernel/vm_arch.c` 负责 `satp`、`sfence.vma` 和 CSR 读取。
 - 当前使用恒等映射：内核、PMM 区域和 UART `0x10000000` 的 VA 等于 PA；没有 unmap、页表回收、ASID 或每任务地址空间。
 - 测试：`test/` 在宿主机的页对齐内存上测试 PMM 和纯 Sv39 算法；RISC-V CSR、真实 page fault、trap 和调度只在 QEMU 验证。
 
@@ -36,6 +36,8 @@
   - 跳转到 `__data_start=0x80203000` 临时取指时得到 `scause=12`，且 `sepc=stval=0x80203000`，证明无 X 的 PTE 在取指前触发 page fault。两个临时探针均已删除。
   - `sv39_unmap_page()` 已通过宿主测试：覆盖参数错误、缺失路径不分配页表、非法/V-only PTE、中间大页、相邻映射隔离、重复 unmap、PMM 页数不变和解除后重新映射。
   - 2026-09-30 强制宿主测试、交叉构建和 8 秒 QEMU 回归通过；额外的 ASan/UBSan 宿主测试在关闭当前环境不支持的 leak 检测后通过。
+  - `sv39_reclaim_empty_tables()` 已实现为与 unmap 分离的步骤：共享 L0 仍有叶映射时回收 0 页，某张 L0 变空时回收 1 页，最后一张 L0 及其 L1 都变空时回收 2 页，根页表始终保留；释放页已验证能由后续 map 复用。
+  - 2026-09-30 回收阶段的强制宿主测试、ASan/UBSan、交叉构建、`git diff --check` 和 8 秒 QEMU 回归均通过。对活动页表必须遵循 unmap -> TLB flush -> reclaim 的顺序；目前尚未在内核运行路径调用回收接口。
 - `task_yield()` 已移除：当前任务在 S-mode，S-mode ECALL cause 9 没有由 OpenSBI 委托给 S-mode；旧代码的 `a7=1` 反而命中 legacy SBI console putchar。以后应在 U-mode syscall 或明确设计的内核同步调度入口中重新引入。
 
 ## Git 与工作区
@@ -46,18 +48,18 @@
 
 ## 下一步（只做这一批）
 
-学习并实现空中间页表的回收，仍先在宿主测试中完成：
+为活动页表补齐按地址 TLB 刷新，并做一次受控的 QEMU 动态映射实验：
 
-1. unmap 一个叶 PTE 后，扫描对应 L0 表；只有 512 项全为 0 时才允许从 L1 断开并释放该表。
-2. 再用相同规则判断 L1 表是否为空；根页表本身不在单页 unmap 中释放。
-3. 保证存在相邻映射时不回收共享页表，并验证 PMM 页数只在整张中间表变空时增加。
-4. 纯页表层仍不刷新 TLB；真正修改活动页表前再为架构层设计按地址 `sfence.vma` 接口。
+1. 在 `vm_arch` 中加入页对齐 canonical VA 的按地址 `sfence.vma` 接口；纯页表层继续不包含 CSR/汇编。
+2. 明确调用顺序为 `sv39_unmap_page` -> 按地址 TLB flush -> `sv39_reclaim_empty_tables`，任何一步失败都要有可观察结果。
+3. 选一个不会覆盖内核恒等映射的临时 VA，映射到 PMM 分配页，在 QEMU 中读写验证；随后解除、刷新并验证访问触发 load page fault。
+4. 故障探针完成后移除，恢复正常调度回归；之后再决定进入每任务地址空间还是 U-mode 准备。
 
 ## 已知限制
 
 - PMM 以内核末尾和 Device Tree 地址推断可用区，不解析 DTB 内存节点，也没有锁。
 - 当前页表依赖恒等映射才能直接解引用物理页表地址。
-- `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；unmap 尚不回收空中间页表，也没有权限修改接口。
+- `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；空 L0/L1 可由独立接口回收，但活动页表尚无按地址 TLB flush 封装，也没有权限修改接口。
 - 调度器仅用于演示两个静态 S-mode 内核任务，没有 idle task、用户态隔离、syscall 或动态任务生命周期。
 
 ## 常用命令

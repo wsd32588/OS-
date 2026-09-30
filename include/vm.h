@@ -71,6 +71,8 @@
 #define SV39_ERR_NOT_MAPPED         -5
 /* 页表中出现非法 PTE（例如 R=0、W=1）。 */
 #define SV39_ERR_INVALID_PTE        -6
+/* PMM 拒绝释放本应属于页表的物理页，表示内部状态不一致。 */
+#define SV39_ERR_PAGE_FREE_FAILED   -7
 
 /* 64 位 PTE：低 10 位 flags，中间 44 位 PPN。 */
 typedef uint64_t Sv39Pte;
@@ -142,6 +144,17 @@ unsigned int sv39_vpn_index(
 Sv39Pte sv39_make_pte(
     uint64_t physical_address,
     uint64_t flags
+);
+
+/*
+ * 回收 virtual_address 所在路径上已经为空的 L0/L1 页表。
+ *
+ * 不解除叶映射、不释放目标物理页、不释放根页表。
+ * 对活动页表调用前，调用者必须先完成相应的 TLB 刷新。
+ */
+int sv39_reclaim_empty_tables(
+    Sv39PageTable *root,
+    uint64_t virtual_address
 );
 
 /* 从 PTE 的 PPN 字段还原物理页基址：PPN << 12。 */

@@ -42,6 +42,22 @@ int sv39_virtual_address_is_canonical(uint64_t address) {
     return upper_bits == upper_mask;
 }
 
+static int sv39_page_table_is_empty(
+    const Sv39PageTable* table
+) {
+    if (table == NULL) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < SV39_PTE_COUNT; ++i) {
+        if (table->entries[i] != 0) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 /*
  * 取出虚拟地址在指定级别的 9 位 VPN 索引。
  *   level = 0 -> VA[20:12]
@@ -391,5 +407,79 @@ int sv39_query_page(
 
     /* 返回叶 PTE 的 flags（包含 V），调用方可据此判断权限。 */
     *flags_out = sv39_pte_flags(*leaf);
+    return SV39_OK;
+}
+
+int sv39_reclaim_empty_tables(
+    Sv39PageTable *root,
+    uint64_t virtual_address
+) {
+    if (root == NULL ||
+        !sv39_virtual_address_is_canonical(
+            virtual_address) ||
+        (virtual_address & (SV39_PAGE_SIZE - 1U)) != 0
+    ) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    int error = SV39_OK;
+
+    Sv39Pte* leaf = sv39_walk_to_leaf(
+        root,
+        virtual_address,
+        0,
+        &error);
+    if (leaf == NULL) {
+        return error;
+    }
+
+    Sv39Pte* level2_entry =
+        &root->entries[
+            sv39_vpn_index(
+                virtual_address,
+                2)
+        ];
+
+    if (!sv39_pte_is_valid(*level2_entry) || sv39_pte_is_leaf(*level2_entry)) {
+        return SV39_ERR_NOT_MAPPED;
+    }
+
+    Sv39PageTable* level1_table =
+        (Sv39PageTable*)(uintptr_t)
+        sv39_pte_physical_address(*level2_entry);
+    Sv39Pte* level1_entry =
+        &level1_table->entries[
+            sv39_vpn_index(
+                virtual_address,
+                1)
+        ];
+
+    Sv39PageTable* level0_table =
+        (Sv39PageTable*)(uintptr_t)
+            sv39_pte_physical_address(*level1_entry);
+
+    if (!sv39_page_table_is_empty(level0_table)) {
+        return 0;
+    }
+
+    Sv39Pte saved_level1_entry = *level1_entry;
+    *level1_entry = 0;
+
+    if (pmm_free_page(level0_table) != 0) {
+        *level1_entry = saved_level1_entry;
+        return SV39_ERR_PAGE_FREE_FAILED;
+    }
+    if (!sv39_page_table_is_empty(level1_table)) {
+        return SV39_OK;
+    }
+
+    Sv39Pte saved_level2_entry = *level2_entry;
+    *level2_entry = 0;
+
+    if (pmm_free_page(level1_table) != 0) {
+        *level2_entry = saved_level2_entry;
+        return SV39_ERR_PAGE_FREE_FAILED;
+    }
+
     return SV39_OK;
 }
