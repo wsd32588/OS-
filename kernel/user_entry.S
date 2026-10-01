@@ -1,3 +1,5 @@
+#include "syscall.h"
+
 .section .rodata.user_image, "a", @progbits
 .balign 4
 
@@ -8,6 +10,11 @@
 .global user_image_end
 
 user_image_start:
+    # putchar('U')
+    addi a0, zero, 85
+    addi a7, zero, SYSCALL_PUTCHAR
+    ecall
+
 1:
     addi t0, t0, 1
     j 1b

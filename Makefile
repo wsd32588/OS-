@@ -34,6 +34,7 @@ OBJS = \
 	kernel/vm.o \
 	kernel/vm_arch.o \
 	kernel/user_entry.o \
+	kernel/syscall.o \
     drivers/uart.o
 
 DEPS = $(OBJS:.o=.d)
