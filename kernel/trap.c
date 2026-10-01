@@ -13,6 +13,7 @@ void trap_init(void) {
     unsigned long addr = (unsigned long)trap_entry;
 
     asm volatile(
+        "csrw sscratch, zero\n"
         "csrw stvec, %0"
         :
         : "r"(addr)

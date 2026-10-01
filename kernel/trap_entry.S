@@ -1,10 +1,18 @@
 #include "trap_offsets.h"
 .section .text.trap
 .balign 4
+.equ SSTATUS_SPP_MASK, 0x100
 
 .global trap_entry
 trap_entry:
-    #创建trap frame
+    # U-mode: sp <- kernel stack, sscratch <- user sp
+    # S-mode: 第一次交换得到 sp=0，需要再交换回来
+    csrrw sp, sscratch, sp
+    bnez sp, .Ltrap_stack_ready
+    csrrw sp, sscratch, sp
+
+.Ltrap_stack_ready:
+    #创建 trap_frame
     addi sp, sp, -TRAP_FRAME_SIZE
 
     #保存通用寄存器
@@ -44,15 +52,31 @@ trap_entry:
     sd t5, TRAP_FRAME_T5_OFFSET(sp)
     sd t6, TRAP_FRAME_T6_OFFSET(sp)
 
+    #保存trap CSR
+    #原始 t0已保存， 现在用作临时寄存器
+    csrr t0, sstatus
+    sd t0, TRAP_FRAME_SSTATUS_OFFSET(sp)
+
+    andi t0, t0, SSTATUS_SPP_MASK
+    bnez t0, .Ltrap_from_supervisor
+
+    #SPP=0: trap 来自U-Mode, 用户 sp 暂存在 sscratch
+    csrr t0, sscratch
+    sd t0, TRAP_FRAME_SP_OFFSET(sp)
+    j .Ltrap_sp_saved
+
+.Ltrap_from_supervisor:
+    #SPP=1: trap 来自S-Mode, 原sp是frame顶部
     addi t0, sp, TRAP_FRAME_SIZE
     sd t0, TRAP_FRAME_SP_OFFSET(sp)
 
-    #保存trap CSR
+.Ltrap_sp_saved:
+    #进入内核后重建S-Mode约定
+    #这样内核处理 trap 是若发生 trap, 不会把用户sp当内核栈
+    csrw sscratch, zero
+
     csrr t0, sepc
     sd t0, TRAP_FRAME_SEPC_OFFSET(sp)
-
-    csrr t0, sstatus
-    sd t0, TRAP_FRAME_SSTATUS_OFFSET(sp)
 
     csrr t0, scause
     sd t0, TRAP_FRAME_SCAUSE_OFFSET(sp)
@@ -75,6 +99,20 @@ trap_restore:
     csrw sepc, t0
 
     ld t0, TRAP_FRAME_SSTATUS_OFFSET(sp)
+    andi t1, t0, SSTATUS_SPP_MASK
+    bnez t1, .Lrestore_supervisor
+
+    #即将返回U-Mode
+    #当前 frame 正上方就是下次trap使用的内核栈顶
+    addi t1, sp, TRAP_FRAME_SIZE
+    csrw sscratch, t1
+    j .Lrestore_scratch_ready
+
+.Lrestore_supervisor:
+    #即将返回 S-mode
+    csrw sscratch, zero
+
+.Lrestore_scratch_ready:
     csrw sstatus, t0
 
     #恢复通用寄存器
