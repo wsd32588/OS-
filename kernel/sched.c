@@ -1,5 +1,4 @@
 #include "sched.h"
-#include "timer.h"
 #include "trap.h"
 #include "uart.h"
 
@@ -8,6 +7,8 @@
 
 #define SSTATUS_SPIE (1UL << 5)
 #define SSTATUS_SPP (1UL << 8)
+
+#define IDLE_TASK_ID (-1)
 
 enum task_state {
     TASK_UNUSED,
@@ -30,15 +31,19 @@ static struct task tasks[MAX_TASKS];
 
 static int task_count;
 static int current_task;
+static struct task idle_task;
 
 extern void task_enter(
     struct trap_frame* frame
 );
 
 
-void sched_init(void) {
-    task_count = 0;
-    current_task = -1;
+static void idle_entry(void) {
+    uart_puts("[idle] entered\n");
+
+    for (;;) {
+        asm volatile("wfi");
+    }
 }
 
 void task_exit(void)
@@ -67,22 +72,9 @@ static unsigned long read_gp(void) {
     return value;
 }
 
-static int task_allocate(
-    struct task** task_out
+static void task_prepare(
+    struct task* task
 ) {
-    if (task_out == NULL ||
-        task_count >= MAX_TASKS) {
-        return -1;
-    }
-    /*
-     * 分配一个新的任务结构体
-     */
-    struct task* task =
-        &tasks[task_count];
-
-    task->entry = NULL;
-    task->state = TASK_READY;
-
     /*
      * 计算内核栈顶地址
      * 栈顶对齐16bytes
@@ -114,6 +106,39 @@ static int task_allocate(
     frame->gp = read_gp(); //设置frame的gp为当前的gp
 
     task->frame = frame; //将frame赋值给task->frame
+}
+
+void sched_init(void) {
+    task_count = 0;
+    current_task = -1;
+
+    task_prepare(&idle_task);
+
+    idle_task.frame->sepc =
+        (unsigned long)idle_entry; //将frame赋值给idle_task.frame
+    idle_task.frame->sstatus =
+        SSTATUS_SPP |
+        SSTATUS_SPIE; //设置idle_task.frame的sstatus为SSTATUS_SPP | SSTATUS_SPIE
+
+}
+
+static int task_allocate(
+    struct task** task_out
+) {
+    if (task_out == NULL ||
+        task_count >= MAX_TASKS) {
+        return -1;
+    }
+    /*
+     * 分配一个新的任务结构体
+     */
+    struct task* task =
+        &tasks[task_count];
+
+    task->entry = NULL;
+    task->state = TASK_READY;
+
+    task_prepare(task);
 
     int task_id = task_count; //获取当前task的id
     ++task_count; //增加task_count
@@ -226,30 +251,31 @@ static int find_next_runnable(void) {
     return -1;
 }
 
-static int sched_reschedule(
+static struct trap_frame* sched_reschedule(
     struct trap_frame* frame
 ) {
-    if (task_count == 0 ||
-        current_task < 0) {
-        return -1;
-    }
-    /*
-     *当前任务被 timer 打断，保存完整 CPU 状态
-     */
-    tasks[current_task].frame = frame;
 
-    /*
-     *如果它仍然正常运行，
-     *那么时间片结束后重新回到 READY
-     */
-    if (tasks[current_task].state == TASK_RUNNING) {
-        tasks[current_task].state = TASK_READY;
+    if (current_task >= task_count) {
+        return frame;
+    }
+
+    if (current_task >= 0) {
+        tasks[current_task].frame = frame;
+
+        if (tasks[current_task].state == TASK_RUNNING) {
+            tasks[current_task].state = TASK_READY;
+        }
+    }
+    else {
+        idle_task.frame = frame;
     }
 
     int next = find_next_runnable();
 
-    if (next < 0) {
-        return -1;
+    if (next >= 0) {
+        current_task = next;
+        tasks[next].state = TASK_RUNNING;
+        return tasks[next].frame;
     }
 
     /*
@@ -260,40 +286,19 @@ static int sched_reschedule(
     *restore registers
     *sret
     */
-    current_task = next;
-    tasks[next].state = TASK_RUNNING;
-
-    return next;
+    current_task = IDLE_TASK_ID;
+    return idle_task.frame;
 }
 
 struct trap_frame* sched_on_timer(
     struct trap_frame* frame
 ) {
-    if (task_count == 0 ||
-        current_task < 0
-    ) {
-        return frame;
+
+    if (frame == NULL) {
+        return NULL;
     }
 
-    int next = sched_reschedule(frame);
-
-    if (next < 0) {
-        /*
-         * 当前任务已经结束，并且没有其他 READY 任务。
-         * 关闭 timer interrupt，进入当前阶段的终止状态。
-         */
-        uart_puts(
-            "\n[scheduler] no runnable tasks\n"
-        );
-        timer_stop();
-
-        for (;;) {
-            asm volatile("wfi");
-        }
-    }
-
-
-    return tasks[next].frame;
+    return sched_reschedule(frame);
 }
 
 struct trap_frame* sched_on_yield(
@@ -306,24 +311,7 @@ struct trap_frame* sched_on_yield(
         return frame;
     }
 
-    int next = sched_reschedule(frame);
-
-    if (next < 0) {
-        /*
-         * 当前任务已经结束，并且没有其他 READY 任务。
-         * 关闭 timer interrupt，进入当前阶段的终止状态。
-         */
-        uart_puts(
-            "\n[scheduler] no runnable tasks\n"
-        );
-        timer_stop();
-
-        for (;;) {
-            asm volatile("wfi");
-        }
-    }
-
-    return tasks[next].frame;
+    return sched_reschedule(frame);
 }
 
 struct trap_frame* sched_on_exit(
@@ -338,24 +326,7 @@ struct trap_frame* sched_on_exit(
 
     tasks[current_task].state = TASK_DEAD;
 
-    int next = sched_reschedule(frame);
-
-    if (next < 0) {
-        /*
-         * 当前任务已经结束，并且没有其他 READY 任务。
-         * 关闭 timer interrupt，进入当前阶段的终止状态。
-         */
-        uart_puts(
-            "\n[scheduler] no runnable tasks\n"
-        );
-        timer_stop();
-
-        for (;;) {
-            asm volatile("wfi");
-        }
-    }
-
-    return tasks[next].frame;
+    return sched_reschedule(frame);
 }
 
 int scheduler_start(void) {
