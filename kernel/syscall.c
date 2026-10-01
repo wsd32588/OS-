@@ -26,6 +26,10 @@ struct trap_frame* syscall_handle(
         uart_puts("[syscall] yield\n");
         return sched_on_yield(frame);
 
+    case SYSCALL_EXIT:
+        uart_puts("[syscall] exit\n");
+        return sched_on_exit(frame);
+
     default:
         frame->a0 = (u64)-1;
         break;

@@ -326,6 +326,38 @@ struct trap_frame* sched_on_yield(
     return tasks[next].frame;
 }
 
+struct trap_frame* sched_on_exit(
+    struct trap_frame* frame
+) {
+    if (task_count == 0 ||
+        current_task < 0 ||
+        frame == NULL
+    ) {
+        return frame;
+    }
+
+    tasks[current_task].state = TASK_DEAD;
+
+    int next = sched_reschedule(frame);
+
+    if (next < 0) {
+        /*
+         * 当前任务已经结束，并且没有其他 READY 任务。
+         * 关闭 timer interrupt，进入当前阶段的终止状态。
+         */
+        uart_puts(
+            "\n[scheduler] no runnable tasks\n"
+        );
+        timer_stop();
+
+        for (;;) {
+            asm volatile("wfi");
+        }
+    }
+
+    return tasks[next].frame;
+}
+
 int scheduler_start(void) {
     if (task_count == 0) {
         return -1;
