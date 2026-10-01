@@ -18,9 +18,6 @@ user_image_start:
     addi a7, zero, SYSCALL_PUTCHAR
     ecall
 
-    addi a7, zero, SYSCALL_EXIT
-    ecall
-
     addi a0, zero, 88
     addi a7, zero, SYSCALL_PUTCHAR
     ecall
