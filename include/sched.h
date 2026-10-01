@@ -15,6 +15,8 @@ void task_exit(void);
 struct trap_frame *
 sched_on_timer(struct trap_frame *frame);
 
+struct trap_frame *
+sched_on_yield(struct trap_frame *frame);
 int task_create_user(uintptr_t entry, uintptr_t user_stack_top);
 
 #endif

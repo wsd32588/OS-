@@ -49,8 +49,7 @@ struct trap_frame* trap_handler(struct trap_frame* frame) {
 
     if (!is_interrupt &&
         code == EXCEPTION_USER_ECALL) {
-        syscall_handle(frame);
-        return frame;
+        return syscall_handle(frame);
     }
 
     uart_puts("\n=== TRAP ===\n");

@@ -10,8 +10,11 @@
 .global user_image_end
 
 user_image_start:
-    # putchar('U')
-    addi a0, zero, 85
+
+    addi a7, zero, SYSCALL_YIELD
+    ecall
+
+    addi a0, zero, 82
     addi a7, zero, SYSCALL_PUTCHAR
     ecall
 
