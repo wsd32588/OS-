@@ -1,6 +1,6 @@
 # TinyOS 项目记忆
 
-最后更新：2026-09-30
+最后更新：2026-10-01
 
 ## 协作方式
 
@@ -12,7 +12,7 @@
 ## 当前实现
 
 - 启动与链接：`kernel/entry.S` 建立 16 KiB boot stack；`linker.ld` 把内核放在 `0x80200000`。
-- Trap：`kernel/trap_entry.S` 保存/恢复 272 字节 `TrapFrame`；C/汇编偏移统一来自 `include/trap_offsets.h`，C 端有静态断言。
+- Trap：`kernel/trap_entry.S` 保存/恢复 272 字节 `TrapFrame`；使用 `sscratch` 区分S-Mode当前内核栈和U-Mode独立内核栈。C/汇编偏移统一来自 `include/trap_offsets.h`，C 端有静态断言。
 - 中断与时钟：`kernel/trap.c` 处理 S timer interrupt；`kernel/timer.c` 经 SBI TIME 设置下一次中断；未知 trap 打印 `scause`、`sepc`、`stval` 后停机。
 - 调度：`kernel/sched.c` 是两个静态 S-mode 任务的轮转抢占调度器，任务栈各 4 KiB，状态为 READY/RUNNING/DEAD。入口函数返回会经 trampoline 调用 `task_exit()`；全部任务结束时关闭 STIE 后停机。目前没有 idle task。
 - PMM：`kernel/pmm.c` 从页对齐的 `__kernel_end` 分配 4 KiB 页，以 Device Tree 地址为保守上界；支持清零、释放、intrusive free list、优先复用和重复释放检测。尚无并发保护。
@@ -50,7 +50,7 @@
 
 ## 下一步（只做这一批）
 
-建立 `sscratch` 约定和 trap 入口的双路径：S-mode 运行时 `sscratch=0`，U-mode 运行时 `sscratch=当前任务内核栈顶`；从 U-mode trap 时先切到内核栈再构造 `TrapFrame`，从 S-mode trap 时继续使用当前内核栈。本批只搭建安全的栈切换机制并保持现有 S-mode 调度回归，不同时引入用户代码、用户页表或 syscall。
+- 建立第一个真正执行指令的 U-Mode任务: 准备一页用户代码和一页用户栈, 在当前内核页表中分别映射位 U|R|X 和 U|R|W, 构造 SPP=0 的初始 TrapFrame。先用 ecall 得到 scause=8 来证明用户指令确实执行: 本批不实现 syscall 处理，不建立没任务独立页表。
 
 ## 已知限制
 
