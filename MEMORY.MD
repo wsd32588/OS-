@@ -12,13 +12,14 @@
 ## 当前实现
 
 - 启动与链接：`kernel/entry.S` 建立 16 KiB boot stack；`linker.ld` 把内核放在 `0x80200000`。
-- Trap：`kernel/trap_entry.S` 保存/恢复 272 字节 `TrapFrame`；使用 `sscratch` 区分S-Mode当前内核栈和U-Mode独立内核栈。C/汇编偏移统一来自 `include/trap_offsets.h`，C 端有静态断言。
+- Trap：`kernel/trap_entry.S` 保存/恢复 288 字节 `TrapFrame`, 显式保存被打断时的 `sp`；使用 `sscratch` 区分S-Mode当前内核栈和U-Mode独立内核栈。C/汇编偏移统一来自 `include/trap_offsets.h`，C 端有静态断言。
 - 中断与时钟：`kernel/trap.c` 处理 S timer interrupt；`kernel/timer.c` 经 SBI TIME 设置下一次中断；未知 trap 打印 `scause`、`sepc`、`stval` 后停机。
-- 调度：`kernel/sched.c` 是两个静态 S-mode 任务的轮转抢占调度器，任务栈各 4 KiB，状态为 READY/RUNNING/DEAD。入口函数返回会经 trampoline 调用 `task_exit()`；全部任务结束时关闭 STIE 后停机。目前没有 idle task。
+- 调度：`kernel/sched.c` 当前管理三个静态任务: 两个 S-mode 任务和一个 U-mode演示, 每个任务都又独立的 4 KiB 内核栈，状态为 READY/RUNNING/DEAD: 内核任务返回会经 trampoline 调用 `task_exit()`；目前没有 idle task。
 - PMM：`kernel/pmm.c` 从页对齐的 `__kernel_end` 分配 4 KiB 页，以 Device Tree 地址为保守上界；支持清零、释放、intrusive free list、优先复用和重复释放检测。尚无并发保护。
 - 虚拟内存：`kernel/vm.c` 实现 Sv39 canonical 地址检查、VPN/PTE 编解码、三级 4 KiB 映射、查询、叶映射解除和空 L0/L1 页表回收；中间页表由 PMM 分配。`kernel/vm_arch.c` 负责 `satp`、`sfence.vma` 和 CSR 读取。
 - 当前内核运行依赖恒等映射：内核、PMM 区域和 UART `0x10000000` 的 VA 等于 PA；已有 4 KiB 页的 map/unmap 和空 L0/L1 回收，但尚无 ASID 或每任务地址空间。
 - 测试：`test/` 在宿主机的页对齐内存上测试 PMM 和纯 Sv39 算法；RISC-V CSR、真实 page fault、trap 和调度只在 QEMU 验证。
+- 用户态演示: 用户代码镜像从内核 `.rodata` 复制到PMM页, 并映射在 `0x40000000` 为 U|R|X: 用户栈映射在 `0x40001000` 为 U|R|X, 栈顶为 `0x40002000`。用户任务目前与内核共享同一个根页表。
 
 ## 已确认的关键事实
 
@@ -37,10 +38,14 @@
   - `sv39_unmap_page()` 已通过宿主测试：覆盖参数错误、缺失路径不分配页表、非法/V-only PTE、中间大页、相邻映射隔离、重复 unmap、PMM 页数不变和解除后重新映射。
   - 2026-09-30 强制宿主测试、交叉构建和 8 秒 QEMU 回归通过；额外的 ASan/UBSan 宿主测试在关闭当前环境不支持的 leak 检测后通过。
   - `sv39_reclaim_empty_tables()` 已实现为与 unmap 分离的步骤：共享 L0 仍有叶映射时回收 0 页，某张 L0 变空时回收 1 页，最后一张 L0 及其 L1 都变空时回收 2 页，根页表始终保留；释放页已验证能由后续 map 复用。
-  - 2026-09-30 回收阶段的强制宿主测试、ASan/UBSan、交叉构建、`git diff --check` 和 8 秒 QEMU 回归均通过。对活动页表必须遵循 unmap -> TLB flush -> reclaim 的顺序；目前尚未在内核运行路径调用回收接口。
+- 2026-09-30 回收阶段的强制宿主测试、ASan/UBSan、交叉构建、`git diff --check` 和 8 秒 QEMU 回归均通过。对活动页表必须遵循 unmap -> TLB flush -> reclaim 的顺序；目前尚未在内核运行路径调用回收接口。
   - `sv39_flush_page()` 已封装当前 hart 的按地址 `sfence.vma`，拒绝非 canonical 或未对齐 VA。QEMU 中曾将 `0x40000000` 动态映射到 PMM 页并成功读写，随后按 unmap -> flush -> reclaim 顺序撤销，重新读取得到 `scause=13`、`stval=0x40000000`。临时探针已删除，正常调度回归通过。
   - `TrapFrame` 已扩展到 288 字节，显式保存被打断时的 `sp`，并用保留字段维持 16 字节对齐；`trap_restore` 不再用 frame 地址隐式推导 `sp`。2026-09-30 强制宿主测试、交叉构建和 8 秒 QEMU 回归通过，已覆盖 B 任务返回后再经 timer 切换并多次恢复 A。
 - `task_yield()` 已移除：当前任务在 S-mode，S-mode ECALL cause 9 没有由 OpenSBI 委托给 S-mode；旧代码的 `a7=1` 反而命中 legacy SBI console putchar。以后应在 U-mode syscall 或明确设计的内核同步调度入口中重新引入。
+- 2026-10-01，第一个 U-mode 任务已在 QEMU 中运行：
+  - 用户代码先成功执行用户栈上的 `sd/ld`，随后 `ecall` 得到 `scause=8`、`sepc=0x40000014`、`stval=0`。
+  - 将用户代码改为死循环后，timer 日志能正确区分 S-mode 与 U-mode；A、B 和用户任务完成轮转，B 返回后 A 与用户任务持续互相抢占。
+  - 用户代码页权限为 U|R|X，用户栈权限为 U|R|W；复制指令后执行 `fence.i`，建立活动页表映射后执行按地址 `sfence.vma`。
 
 ## Git 与工作区
 
@@ -50,7 +55,7 @@
 
 ## 下一步（只做这一批）
 
-- 建立第一个真正执行指令的 U-Mode任务: 准备一页用户代码和一页用户栈, 在当前内核页表中分别映射位 U|R|X 和 U|R|W, 构造 SPP=0 的初始 TrapFrame。先用 ecall 得到 scause=8 来证明用户指令确实执行: 本批不实现 syscall 处理，不建立没任务独立页表。
+处理 U-mode `ecall`：约定 `a7` 为 syscall 编号、`a0` 为第一个参数和返回值；仅实现一个由内核代写 UART 的字符输出 syscall，并在处理成功后令 `sepc += 4`。本批不实现 yield、exit、用户指针复制或独立进程页表。
 
 ## 已知限制
 
@@ -58,6 +63,9 @@
 - 当前页表依赖恒等映射才能直接解引用物理页表地址。
 - `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；空 L0/L1 可由独立接口回收，当前只有单 hart 本地 TLB flush，没有多 hart shootdown、ASID 或权限修改接口。
 - 调度器仅用于演示两个静态 S-mode 内核任务，没有 idle task、用户态隔离、syscall 或动态任务生命周期。
+- 用户任务仍与内核共享根页表；隔离目前只依赖 PTE 的 U 位。
+- 演示用户代码页和栈页启动后常驻，没有地址空间对象负责回收；启动失败路径也尚未完整回滚部分分配。
+- 尚未实现 syscall、用户任务退出和用户指针安全访问。
 
 ## 常用命令
 

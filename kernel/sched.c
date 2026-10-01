@@ -3,7 +3,7 @@
 #include "trap.h"
 #include "uart.h"
 
-#define MAX_TASKS 2
+#define MAX_TASKS 3
 #define STACK_SIZE 4096
 
 #define SSTATUS_SPIE (1UL << 5)
@@ -62,6 +62,62 @@ static unsigned long read_gp(void) {
     return value;
 }
 
+static int task_allocate(
+    struct task** task_out
+) {
+    if (task_out == NULL ||
+        task_count >= MAX_TASKS) {
+        return -1;
+    }
+    /*
+     * 分配一个新的任务结构体
+     */
+    struct task* task =
+        &tasks[task_count];
+
+    task->entry = NULL;
+    task->state = TASK_READY;
+
+    /*
+     * 计算内核栈顶地址
+     * 栈顶对齐16bytes
+     */
+    unsigned long kernel_stack_top =
+        (unsigned long)&task->stack[STACK_SIZE]; //当前内核栈顶设置为task->stack[STACK_SIZE]的地址
+    kernel_stack_top &= ~0xFUL; // 对齐16bytes
+
+    unsigned long frame_address =
+        kernel_stack_top - sizeof(struct trap_frame); //计算frame的地址
+
+    struct trap_frame* frame =
+        (struct trap_frame*)frame_address;
+
+    unsigned long* words = (unsigned long*)frame; //将frame的地址转换为unsigned long*类型
+
+    for (unsigned long i = 0; i < sizeof(*frame) / sizeof(unsigned long); ++i) {
+        words[i] = 0; //清零frame
+    }
+
+    /*
+    *RISC-V ABI要求栈保持16byte alignment
+    */
+    /*
+     * 所有任务共享一个kernel空间
+     * 所以 gp 继承当前 kernel gp
+     */
+    frame->sp = kernel_stack_top; //设置frame的sp为kernel_stack_top
+    frame->gp = read_gp(); //设置frame的gp为当前的gp
+
+    task->frame = frame; //将frame赋值给task->frame
+
+    int task_id = task_count; //获取当前task的id
+    ++task_count; //增加task_count
+
+    *task_out = task;
+
+    return task_id;
+}
+
 static void task_trampoline(void)
 {
     void (*entry)(void) =
@@ -80,74 +136,67 @@ int task_create(void (*entry)(void)) {
         return -1;
     }
 
-    struct task* task =
-         &tasks[task_count];
+    struct task* task = NULL;
+    int task_id = task_allocate(&task);
 
-/*
-*设置函数为entry,等待状态为READY
-*/
+    if (task_id < 0) {
+        return -1;
+    }
+    /*
+     *设置函数为entry,等待状态为READY
+     */
     task->entry = entry;
-    task->state = TASK_READY;
-
-    unsigned long stack_top =
-        (unsigned long)&task->stack[STACK_SIZE];
 
     /*
-    *栈顶16-byte对齐
-    */
-    stack_top &= ~0xFUL;
-
-    /*
-    *任务栈顶人工放一个TrapFrame
-    */
-
-    unsigned long initial_sp = stack_top;
-
-    stack_top -= sizeof(struct trap_frame);
-    struct trap_frame* frame =
-        (struct trap_frame*)stack_top;
-
-    /*
-    *清零frame
-    */
-    unsigned long *p =
-        (unsigned long*)frame;
-    for(unsigned long i = 0;
-        i < sizeof(*frame) / sizeof(unsigned long);
-        i++) {
-            p[i] = 0;
-        }
-
-    frame->sp = initial_sp;
-    /*
-    *sret后从task_trampoine 开始执行
-    */
-    frame->sepc =
+     *sret后从task_trampoine 开始执行
+     */
+    task->frame->sepc =
         (unsigned long)task_trampoline;
     /*
-    *SPP = 1
-    *sret后回到S-mode
-    *
-    *SPIE = 1
-    *sret 后SIE恢复到1
-    */
-    frame->sstatus =
+     *SPP = 1
+     *sret后回到S-mode
+     *
+     *SPIE = 1
+     *sret 后SIE恢复到1
+     */
+    task->frame->sstatus =
         SSTATUS_SPP |
         SSTATUS_SPIE;
 
+    return task_id;
+}
+
+int task_create_user(uintptr_t entry, uintptr_t user_stack_top) {
+    if (entry == 0 ||
+        (entry & 1U) != 0 ||
+        user_stack_top == 0 ||
+        (user_stack_top & 0xFUL) != 0) {
+        return -1;
+        }
+
+    struct task* task = NULL;
+    int task_id = task_allocate(&task);
+
+    if (task_id < 0) {
+        return -1;
+    }
+
+    task->frame->sepc = (unsigned long)entry;
+    task->frame->sp = (unsigned long)user_stack_top;
+
     /*
-    *RISC-V ABI要求栈保持16byte alignment
-    */
-    /*
-     * 所有任务共享一个kernel空间
-     * 所以 gp 继承当前 kernel gp
+     *SPP = 0: sret后回到U-mode
+     *SPIE = 1: sret后SIE恢复到1
      */
+    task->frame->sstatus = SSTATUS_SPIE;
 
-    frame->gp = read_gp();
-    task->frame = frame;
-    ++task_count;
+    /*
+     *当前用户汇编不用gp,所以设置为0
+     *不把内核 gp 暴露给用户初始上下文
+     */
+    task->frame->gp = 0;
 
-    return task_count - 1;
+    return task_id;
 }
 
 static int find_next_runnable(void) {
