@@ -30,6 +30,12 @@ struct trap_frame* syscall_handle(
         uart_puts("[syscall] exit\n");
         return sched_on_exit(frame);
 
+    case SYSCALL_SLEEP:
+        unsigned long ticks = frame->a0;
+        frame->a0 = 0;
+        uart_puts("[syscall] sleep\n");
+        return sched_on_sleep(frame, ticks);
+
     default:
         frame->a0 = (u64)-1;
         break;

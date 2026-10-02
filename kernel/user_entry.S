@@ -18,6 +18,10 @@ user_image_start:
     addi a7, zero, SYSCALL_PUTCHAR
     ecall
 
+    addi a0, zero, 2
+    addi a7, zero, SYSCALL_SLEEP
+    ecall
+
     addi a0, zero, 88
     addi a7, zero, SYSCALL_PUTCHAR
     ecall

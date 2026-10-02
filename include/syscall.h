@@ -4,6 +4,7 @@
 #define SYSCALL_PUTCHAR     1
 #define SYSCALL_YIELD       2
 #define SYSCALL_EXIT        3
+#define SYSCALL_SLEEP       4
 
 #ifndef __ASSEMBLER__
 struct trap_frame;

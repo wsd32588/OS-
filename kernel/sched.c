@@ -15,6 +15,7 @@ enum task_state {
     TASK_READY,
     TASK_RUNNING,
     TASK_DEAD,
+    TASK_BLOCKED,
 };
 
 struct task {
@@ -25,6 +26,7 @@ struct task {
 
     void (*entry)(void);
     enum task_state state;
+    unsigned long sleep_ticks;
 };
 
 static struct task tasks[MAX_TASKS];
@@ -70,6 +72,19 @@ static unsigned long read_gp(void) {
     );
 
     return value;
+}
+
+static void wake_sleeping_tasks(void) {
+    for (int i = 0; i < task_count; ++i) {
+        if (tasks[i].state == TASK_BLOCKED &&
+            tasks[i].sleep_ticks > 0) {
+            --tasks[i].sleep_ticks;
+
+            if (tasks[i].sleep_ticks == 0) {
+                tasks[i].state = TASK_READY;
+            }
+        }
+    }
 }
 
 static void task_prepare(
@@ -137,6 +152,7 @@ static int task_allocate(
 
     task->entry = NULL;
     task->state = TASK_READY;
+    task->sleep_ticks = 0;
 
     task_prepare(task);
 
@@ -298,6 +314,8 @@ struct trap_frame* sched_on_timer(
         return NULL;
     }
 
+    wake_sleeping_tasks();
+
     return sched_reschedule(frame);
 }
 
@@ -325,6 +343,23 @@ struct trap_frame* sched_on_exit(
     }
 
     tasks[current_task].state = TASK_DEAD;
+
+    return sched_reschedule(frame);
+}
+
+struct trap_frame* sched_on_sleep(
+    struct trap_frame* frame,
+    unsigned long ticks
+) {
+    if (task_count == 0 ||
+        current_task < 0 ||
+        frame == NULL ||
+        ticks == 0) {
+            return frame;
+        }
+
+    tasks[current_task].state = TASK_BLOCKED;
+    tasks[current_task].sleep_ticks = ticks;
 
     return sched_reschedule(frame);
 }
