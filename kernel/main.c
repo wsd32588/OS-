@@ -99,10 +99,13 @@ static int identity_mapping_is_present(
 }
 
 static int prepare_demo_user_memory(
-    Sv39PageTable* root
+    Sv39PageTable* root,
+    UserMemory* memory_out
 ) {
 
-    if(root == NULL) {
+    if(root == NULL ||
+        memory_out == NULL
+    ) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
@@ -183,7 +186,20 @@ static int prepare_demo_user_memory(
         return result;
     }
 
-    return sv39_flush_page(DEMO_USER_STACK_ADDRESS);
+    result = sv39_flush_page(DEMO_USER_STACK_ADDRESS);
+    if (result != SV39_OK) {
+        return result;
+    }
+
+    *memory_out = (UserMemory){
+        .root = root,
+        .code_page = code_page,
+        .stack_page = stack_page,
+        .code_address = DEMO_USER_CODE_ADDRESS,
+        .stack_address = DEMO_USER_STACK_ADDRESS
+    };
+
+    return SV39_OK;
 }
 void kernel_main(unsigned long hart_id, const void* device_tree) {
     uart_puts("\nHello TinyOS!\n");
@@ -373,13 +389,14 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
 
     uint64_t satp_value =
         sv39_read_satp();
-
+    UserMemory user_memory = {0};
     uart_puts("Paging enabled. satp: ");
     uart_put_hex((unsigned long)satp_value);
     uart_putchar('\n');
 
     if (prepare_demo_user_memory(
-        kernel_root) != SV39_OK
+        kernel_root,
+        &user_memory) != SV39_OK
     ) {
         uart_puts("Demo user memory setup failed.\n");
 
@@ -393,7 +410,8 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
     int task_b_id = task_create(task_b);
     int user_task_id = task_create_user(
         DEMO_USER_CODE_ADDRESS,
-        DEMO_USER_STACK_TOP
+        DEMO_USER_STACK_TOP,
+        &user_memory
     );
 
     if (task_a_id < 0 ||

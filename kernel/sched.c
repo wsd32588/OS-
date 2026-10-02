@@ -27,6 +27,7 @@ struct task {
     void (*entry)(void);
     enum task_state state;
     unsigned long sleep_ticks;
+    UserMemory user_memory;
 };
 
 static struct task tasks[MAX_TASKS];
@@ -153,6 +154,7 @@ static int task_allocate(
     task->entry = NULL;
     task->state = TASK_READY;
     task->sleep_ticks = 0;
+    task->user_memory = (UserMemory){0};
 
     task_prepare(task);
 
@@ -212,8 +214,16 @@ int task_create(void (*entry)(void)) {
     return task_id;
 }
 
-int task_create_user(uintptr_t entry, uintptr_t user_stack_top) {
+int task_create_user(
+    uintptr_t entry,
+    uintptr_t user_stack_top,
+    UserMemory* memory
+) {
     if (entry == 0 ||
+        memory == NULL ||
+        memory->root == NULL ||
+        memory->code_page == NULL ||
+        memory->stack_page == NULL ||
         (entry & 1U) != 0 ||
         user_stack_top == 0 ||
         (user_stack_top & 0xFUL) != 0) {
@@ -241,7 +251,8 @@ int task_create_user(uintptr_t entry, uintptr_t user_stack_top) {
      *不把内核 gp 暴露给用户初始上下文
      */
     task->frame->gp = 0;
-
+    task->user_memory = *memory;
+    *memory = (UserMemory){0};
     return task_id;
 }
 
