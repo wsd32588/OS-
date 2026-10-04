@@ -411,74 +411,80 @@ int sv39_query_page(
 }
 
 int sv39_reclaim_empty_tables(
-    Sv39PageTable *root,
+    Sv39PageTable* root,
     uint64_t virtual_address
 ) {
     if (root == NULL ||
-        !sv39_virtual_address_is_canonical(
-            virtual_address) ||
-        (virtual_address & (SV39_PAGE_SIZE - 1U)) != 0
+        !sv39_virtual_address_is_canonical(virtual_address) ||
+        (virtual_address & (SV39_PAGE_SIZE - 1UL)) != 0
     ) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
-    int error = SV39_OK;
+    /*
+     * 记录从根向下的各级页表与对应 entry 槽位：
+     * tables[2] = 根页表 (L2)
+     * tables[1] = 目录页表 (L1)
+     * tables[0] = 叶页表 (L0)
+     */
+    Sv39PageTable* tables[3];
+    Sv39Pte* entries[3];
+    int lowest_level = 2;
+    tables[2] = root;
 
-    Sv39Pte* leaf = sv39_walk_to_leaf(
-        root,
-        virtual_address,
-        0,
-        &error);
-    if (leaf == NULL) {
-        return error;
+    /*
+     * 第一阶段：自顶向下 (L2 -> L0) 逐级查表并校验
+     */
+    for (int level = 2; level > 0; --level) {
+        uint64_t vpn = sv39_vpn_index(virtual_address, (unsigned int)level);
+        Sv39Pte* pte = &tables[level]->entries[vpn];
+        entries[level] = pte;
+
+        /* 若中间路径无效或为大页叶子，说明根本没有下一级独立页表 */
+        if ((*pte & SV39_PTE_V) == 0) {
+            if (level == 2) {
+                return SV39_ERR_NOT_MAPPED;
+            }
+            break;
+        }
+
+        if (!sv39_pte_is_valid(*pte) ) {
+            return SV39_ERR_INVALID_PTE;
+        }
+
+        if( sv39_pte_is_leaf(*pte)) {
+            return SV39_ERR_INTERMEDIATE_LEAF;
+        }
+
+        /*
+         * 获取下一级页表的物理基地址并转换为内核可访问指针
+         * (当前 TinyOS 依赖内核恒等映射解引用页表物理页)
+         */
+        tables[level - 1] = (Sv39PageTable*)(uintptr_t)sv39_pte_physical_address(*pte);
+        lowest_level = level - 1;
     }
 
-    Sv39Pte* level2_entry =
-        &root->entries[
-            sv39_vpn_index(
-                virtual_address,
-                2)
-        ];
+    /*
+     * 第二阶段：自底向上 (L0 -> L1) 检查是否全空，级联回收
+     * 注：根页表 (level = 2) 归进程地址空间生命周期管理，不参与此类按需回收
+     */
+    for (int level = lowest_level; level < 2; ++level) {
+        /* 如果当前级别的页表非空，说明其仍承载有效映射，向上级联中断 */
+        if (!sv39_page_table_is_empty(tables[level])) {
+            break;
+        }
 
-    if (!sv39_pte_is_valid(*level2_entry) || sv39_pte_is_leaf(*level2_entry)) {
-        return SV39_ERR_NOT_MAPPED;
-    }
+        Sv39Pte* parent_entry = entries[level + 1];
+        Sv39Pte saved_entry = *parent_entry;
 
-    Sv39PageTable* level1_table =
-        (Sv39PageTable*)(uintptr_t)
-        sv39_pte_physical_address(*level2_entry);
-    Sv39Pte* level1_entry =
-        &level1_table->entries[
-            sv39_vpn_index(
-                virtual_address,
-                1)
-        ];
+        /* 先将父级指向当前页表的 PTE 抹零，防止悬空访问 */
+        *parent_entry = 0;
 
-    Sv39PageTable* level0_table =
-        (Sv39PageTable*)(uintptr_t)
-            sv39_pte_physical_address(*level1_entry);
-
-    if (!sv39_page_table_is_empty(level0_table)) {
-        return 0;
-    }
-
-    Sv39Pte saved_level1_entry = *level1_entry;
-    *level1_entry = 0;
-
-    if (pmm_free_page(level0_table) != 0) {
-        *level1_entry = saved_level1_entry;
-        return SV39_ERR_PAGE_FREE_FAILED;
-    }
-    if (!sv39_page_table_is_empty(level1_table)) {
-        return SV39_OK;
-    }
-
-    Sv39Pte saved_level2_entry = *level2_entry;
-    *level2_entry = 0;
-
-    if (pmm_free_page(level1_table) != 0) {
-        *level2_entry = saved_level2_entry;
-        return SV39_ERR_PAGE_FREE_FAILED;
+        /* 释放空页表物理页 */
+        if (pmm_free_page(tables[level]) != 0) {
+            *parent_entry = saved_entry; /* 释放失败，还原父级 PTE */
+            return SV39_ERR_PAGE_FREE_FAILED;
+        }
     }
 
     return SV39_OK;

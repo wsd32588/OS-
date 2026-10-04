@@ -2,18 +2,9 @@
 #define TINYOS_SCHED_H
 
 #include <stdint.h>
-
-#include "vm.h"
+#include "user_memory.h"
 
 struct trap_frame;
-
-typedef struct {
-    Sv39PageTable* root; //根页表
-    void* code_page; //PMM返回的指针
-    void* stack_page;
-    uintptr_t code_address; // 用户虚地址
-    uintptr_t stack_address;
-} UserMemory;
 
 void sched_init(void);
 int task_create(void (*entry)(void));

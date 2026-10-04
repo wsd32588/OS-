@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "pmm.h"
+#include "c_api.hpp"
 
 #define TEST_PAGE_COUNT 8192UL
 #define STRESS_OPERATION_COUNT 20000UL
@@ -16,7 +16,7 @@ static int fail(const char *message) {
 }
 
 static int page_is_zero(const void *page) {
-    const unsigned char *bytes = page;
+    const unsigned char *bytes = static_cast<const unsigned char *>(page);
 
     for (size_t i = 0; i < PAGE_SIZE; ++i) {
         if (bytes[i] != 0) {
@@ -98,9 +98,11 @@ static int test_basic_operations(void *memory, size_t memory_size) {
 }
 
 static int test_stress(void *memory, size_t memory_size) {
-    void **live_pages = calloc(TEST_PAGE_COUNT, sizeof(*live_pages));
-    unsigned char *in_use = calloc(TEST_PAGE_COUNT, sizeof(*in_use));
+    void **live_pages = static_cast<void **>(calloc(TEST_PAGE_COUNT, sizeof(*live_pages)));
+    unsigned char *in_use = static_cast<unsigned char *>(calloc(TEST_PAGE_COUNT, sizeof(*in_use)));
     int result = -1;
+    size_t live_count = 0;
+    uint32_t random_state = UINT32_C(0x32588);
 
     if (live_pages == NULL || in_use == NULL) {
         fail("could not allocate stress-test metadata");
@@ -111,9 +113,6 @@ static int test_stress(void *memory, size_t memory_size) {
         fail("pmm_init failed before the stress test");
         goto done;
     }
-
-    size_t live_count = 0;
-    uint32_t random_state = UINT32_C(0x32588);
 
     for (unsigned long operation = 0;
          operation < STRESS_OPERATION_COUNT;

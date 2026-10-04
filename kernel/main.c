@@ -118,14 +118,26 @@ static int prepare_demo_user_memory(
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
-    void* code_page = pmm_alloc_page();
+    void* code_page = NULL;
+    void* stack_page = NULL;
+    int code_mapping_attempted = 0;
+    int stack_mapping_attempted = 0;
+    int code_mapped = 0;
+    int stack_mapped = 0;
+    int result = SV39_OK;
+
+
+
+    code_page = pmm_alloc_page();
     if (code_page == NULL) {
-        return SV39_ERR_NO_MEMORY;
+        result = SV39_ERR_NO_MEMORY;
+        goto clean_up;
     }
 
-    void* stack_page = pmm_alloc_page();
+    stack_page = pmm_alloc_page();
     if (stack_page == NULL) {
-        return SV39_ERR_NO_MEMORY;
+        result = SV39_ERR_NO_MEMORY;
+        goto clean_up;
     }
 
     unsigned char* destination = (unsigned char*)code_page;
@@ -160,35 +172,38 @@ static int prepare_demo_user_memory(
         SV39_PTE_A |
         SV39_PTE_D;
 
-    int result = sv39_map_page(
+    code_mapping_attempted = 1;
+    result = sv39_map_page(
         root,
         DEMO_USER_CODE_ADDRESS,
         (uintptr_t)code_page,
         user_code_flags
     );
-
     if (result != SV39_OK) {
-        return result;
+        goto clean_up;
     }
+    code_mapped = 1;
 
+    stack_mapping_attempted = 1;
     result = sv39_map_page(
         root,
         DEMO_USER_STACK_ADDRESS,
         (uint64_t)(uintptr_t)stack_page,
         user_stack_flags
     );
-
     if (result != SV39_OK) {
-        return result;
+        goto clean_up;
     }
+    stack_mapped = 1;
+
     result = sv39_flush_page(DEMO_USER_CODE_ADDRESS);
     if (result != SV39_OK) {
-        return result;
+        goto clean_up;
     }
 
     result = sv39_flush_page(DEMO_USER_STACK_ADDRESS);
     if (result != SV39_OK) {
-        return result;
+        goto clean_up;
     }
 
     *memory_out = (UserMemory){
@@ -200,7 +215,68 @@ static int prepare_demo_user_memory(
     };
 
     return SV39_OK;
+    clean_up:
+        if (stack_mapped == 1) {
+            int err = sv39_unmap_page(root, DEMO_USER_STACK_ADDRESS);
+            if (err != SV39_OK && err != SV39_ERR_NOT_MAPPED) {
+                return err;
+            }
+        }
+
+        if (code_mapped == 1) {
+            int err = sv39_unmap_page(root, DEMO_USER_CODE_ADDRESS);
+            if (err != SV39_OK && err != SV39_ERR_NOT_MAPPED) {
+                return err;
+            }
+        }
+
+        if (stack_mapping_attempted == 1) {
+            int err = sv39_flush_page(DEMO_USER_STACK_ADDRESS);
+            if (err != SV39_OK) {
+                return err;
+            }
+        }
+
+        if (code_mapping_attempted == 1) {
+            int err = sv39_flush_page(DEMO_USER_CODE_ADDRESS);
+            if (err != SV39_OK) {
+                return err;
+            }
+        }
+
+        if (code_page != NULL) {
+            int err = pmm_free_page(code_page);
+            if (err != 0) {
+                return SV39_ERR_PAGE_FREE_FAILED;
+            }
+        }
+
+        if (stack_page != NULL) {
+            int err = pmm_free_page(stack_page);
+            if (err != 0) {
+                return SV39_ERR_PAGE_FREE_FAILED;
+            }
+        }
+
+        if (stack_mapping_attempted) {
+            int err = sv39_reclaim_empty_tables(root, DEMO_USER_STACK_ADDRESS);
+            if (err != SV39_OK &&
+                err != SV39_ERR_NOT_MAPPED) {
+                return err;
+            }
+        }
+
+        if (code_mapping_attempted) {
+            int err = sv39_reclaim_empty_tables(root, DEMO_USER_CODE_ADDRESS);
+            if (err != SV39_OK &&
+                err != SV39_ERR_NOT_MAPPED) {
+                return err;
+            }
+        }
+
+    return result;
 }
+
 void kernel_main(unsigned long hart_id, const void* device_tree) {
     uart_puts("\nHello TinyOS!\n");
 
@@ -419,6 +495,10 @@ void kernel_main(unsigned long hart_id, const void* device_tree) {
         user_task_id < 0) {
         uart_puts("Task creation failed.\n");
 
+        int clean_result = user_memory_release(&user_memory);
+        if (clean_result != SV39_OK) {
+            uart_puts("[FAIL] clean up memory failed");
+        }
         for (;;) {
             asm volatile("wfi");
         }

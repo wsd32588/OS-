@@ -1,6 +1,7 @@
 #include "sched.h"
 #include "trap.h"
 #include "uart.h"
+#include "user_memory.h"
 
 #define MAX_TASKS 3
 #define STACK_SIZE 4096
@@ -354,7 +355,17 @@ struct trap_frame* sched_on_exit(
     }
 
     tasks[current_task].state = TASK_DEAD;
+    int res = user_memory_release(
+        &tasks[current_task].user_memory);
 
+    if (res != SV39_OK) {
+        uart_puts("[user memory] release failed: ");
+        uart_put_hex((unsigned long)res);
+        uart_puts("\n");
+        for (;;) {
+            asm volatile("wfi");
+        }
+    }
     return sched_reschedule(frame);
 }
 

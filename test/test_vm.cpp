@@ -1,78 +1,29 @@
 #include "test_vm.h"
 
-#include <inttypes.h>
+#include "c_api.hpp"
+#include "test_support.hpp"
+
 #include <stdint.h>
 #include <stdio.h>
 
-#include "pmm.h"
-#include "vm.h"
-
-static int fail(
-    const char* msg,
-    const char* file,
-    unsigned long line
-) {
-    fprintf(stderr,"[FAIL] %s at %s:%lu\n", msg, file, line);
+static int fail(const char *message, const char *file, unsigned long line) {
+    std::cerr << "[FAIL] " << message << " at " << file << ':' << line << '\n';
     return -1;
 }
 
-static void print_u64_value(FILE* stream, uint64_t value) {
-    fprintf(stream, "%"PRIu64, value);
-
-    /*
-     * 错误码是负的 int，但 CHECK_EQ 统一按 uint64_t 比较；
-     * 这个函数额外打印它的有符号解释，避免看到 18446744073709551611。
-     */
-    if (value > (uint64_t)INT64_MAX) {
-        fprintf(stream, " (signed: %"PRId64")", (int64_t)value);
-    }
-}
-
-static int fail_eq_u64(
-    uint64_t actual,
-    uint64_t expected,
-    const char* actual_expression,
-    const char* expected_expression,
-    const char* file,
-    unsigned long line
-) {
-    fprintf(
-        stderr,
-        "[FAIL] %s == %s at %s:%lu\n"
-        "    actual:       ",
-        actual_expression,
-        expected_expression,
-        file,
-        line
-    );
-    print_u64_value(stderr, actual);
-    fprintf(stderr, "\n    expected:     ");
-    print_u64_value(stderr, expected);
-    fprintf(stderr, "\n");
-
-    return -1;
-}
-
-#define CHECK_EQ(actual_expression, expected_expression) \
-    do{ \
-        uint64_t actual_value = \
-            (uint64_t)(actual_expression); \
-        uint64_t expected_value = \
-            (uint64_t)(expected_expression); \
-        if (actual_value != expected_value) { \
-            return fail_eq_u64( \
-                actual_value, \
-                expected_value, \
-                #actual_expression, \
-                #expected_expression, \
-                __FILE__, \
-                __LINE__ \
-            ); \
+#define CHECK_EQ(actual, expected) \
+    do { \
+        if (!tinyos_test::check_equal((actual), (expected), #actual " == " #expected)) { \
+            return -1; \
         } \
-    } while(0)
+    } while (false)
 
-#define CHECK(cond) \
-    do {if (!(cond)) { return fail(#cond, __FILE__, __LINE__); } }while(0)
+#define CHECK(condition) \
+    do { \
+        if (!tinyos_test::check((condition), #condition)) { \
+            return -1; \
+        } \
+    } while (false)
 
 static int test_size(void) {
     CHECK_EQ(sizeof(Sv39Pte), 8);
@@ -810,6 +761,41 @@ static int test_sv39_reclaim_empty_tables(void) {
     return 0;
 }
 
+static int test_sv39_reclaim_after_allocation_failure(void) {
+    /* 只够 root 和 L1，确保下一次 L0 分配失败。 */
+    alignas(SV39_PAGE_SIZE) static uint8_t memory_pool[2 * SV39_PAGE_SIZE];
+    const uint64_t virtual_address = UINT64_C(0x40000000);
+    const uint64_t physical_address = UINT64_C(0x90000000);
+
+    CHECK_EQ(pmm_init(memory_pool, memory_pool + sizeof(memory_pool)), 0);
+    Sv39PageTable *root = sv39_create_page_table();
+    CHECK(root != NULL);
+    unsigned long pages_before_map = pmm_available_pages();
+    CHECK_EQ(pages_before_map, 1);
+
+    CHECK_EQ(sv39_map_page(root, virtual_address, physical_address, SV39_PTE_R),
+             SV39_ERR_NO_MEMORY);
+    CHECK_EQ(pmm_available_pages(), 0);
+
+    Sv39Pte *root_entry = &root->entries[sv39_vpn_index(virtual_address, 2)];
+    CHECK(sv39_pte_is_valid(*root_entry));
+    CHECK(!sv39_pte_is_leaf(*root_entry));
+
+    CHECK_EQ(sv39_reclaim_empty_tables(root, virtual_address), SV39_OK);
+    CHECK_EQ(pmm_available_pages(), pages_before_map);
+    CHECK_EQ(*root_entry, 0);
+
+    uint64_t physical_address_out = 0;
+    uint64_t flags_out = 0;
+    CHECK_EQ(sv39_query_page(root, virtual_address,
+                            &physical_address_out, &flags_out),
+             SV39_ERR_NOT_MAPPED);
+    CHECK_EQ(sv39_reclaim_empty_tables(root, virtual_address),
+             SV39_ERR_NOT_MAPPED);
+    CHECK_EQ(pmm_available_pages(), pages_before_map);
+    return 0;
+}
+
 int test_vm(void) {
     if (test_size() != 0) return -1;
     if (test_canonical() != 0) return -1;
@@ -829,6 +815,10 @@ int test_vm(void) {
     }
 
     if (test_sv39_reclaim_empty_tables() != 0) {
+        return -1;
+    }
+
+    if (test_sv39_reclaim_after_allocation_failure() != 0) {
         return -1;
     }
 

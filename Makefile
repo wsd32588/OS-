@@ -2,6 +2,10 @@ CC = riscv64-linux-gnu-gcc
 LD = riscv64-linux-gnu-ld
 QEMU = qemu-system-riscv64
 HOST_CC ?= cc
+HOST_CXX ?= c++
+CMAKE ?= cmake
+CTEST ?= ctest
+TEST_BUILD_DIR ?= test/build/cmake
 
 ARCH_FLAGS = -march=rv64imac_zicsr_zifencei \
              -mabi=lp64 \
@@ -17,11 +21,6 @@ CFLAGS = -Wall -Wextra -O0 -g \
 
 DEPFLAGS = -MMD -MP
 
-HOST_TEST_CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -O2 -g \
-                   -Iinclude -Itest
-
-TEST_BIN = test/tinyos_tests
-
 OBJS = \
     kernel/entry.o \
     kernel/main.o \
@@ -35,11 +34,12 @@ OBJS = \
 	kernel/vm_arch.o \
 	kernel/user_entry.o \
 	kernel/syscall.o \
+	kernel/user_memory.o \
     drivers/uart.o
 
 DEPS = $(OBJS:.o=.d)
 
-.PHONY: all clean compdb debug qemu sync test
+.PHONY: all clean compdb debug qemu sync test test-qemu
 
 all: kernel.elf
 
@@ -70,25 +70,26 @@ debug: kernel.elf
 		-S \
 		-gdb tcp:127.0.0.1:2600
 
-test: $(TEST_BIN)
-	./$(TEST_BIN)
+test:
+	$(CMAKE) -S test -B "$(TEST_BUILD_DIR)" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_C_COMPILER="$(HOST_CC)" -DCMAKE_CXX_COMPILER="$(HOST_CXX)"
+	$(CMAKE) --build "$(TEST_BUILD_DIR)"
+	$(CTEST) --test-dir "$(TEST_BUILD_DIR)" --output-on-failure
 
-compdb:
-	bear -- sh -c '$(MAKE) -B && $(MAKE) -B test'
+test-qemu:
+	python3 test/verify_prepare_rollback.py
+	python3 test/verify_task_creation_rollback.py
 
-$(TEST_BIN): test/test_main.c test/test_pmm.c test/test_pmm.h \
-			 test/test_vm.c test/test_vm.h \
-             kernel/pmm.c include/pmm.h \
-			 kernel/vm.c include/vm.h
-	$(HOST_CC) $(HOST_TEST_CFLAGS) \
-		test/test_main.c test/test_pmm.c \
-		test/test_vm.c \
-		kernel/vm.c kernel/pmm.c\
-		-o $@
+compdb: test
+	bear -- $(MAKE) -B all
+	python3 test/merge_compile_commands.py compile_commands.json "$(TEST_BUILD_DIR)/compile_commands.json"
 
 clean:
 	rm -f kernel/*.o kernel/*.d drivers/*.o drivers/*.d kernel.elf \
-		*.o *.d $(TEST_BIN)
+		*.o *.d test/tinyos_tests
+	if [ -f "$(TEST_BUILD_DIR)/CMakeCache.txt" ]; then \
+		$(CMAKE) --build "$(TEST_BUILD_DIR)" --target clean; \
+	fi
 
 -include $(DEPS)
 

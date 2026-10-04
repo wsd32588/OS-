@@ -114,7 +114,11 @@ int sv39_query_page(
 );
 
 /* 编译期保证页表大小恰好是一页。 */
+#ifdef __cplusplus
+static_assert(
+#else
 _Static_assert(
+#endif
     sizeof(Sv39PageTable) == SV39_PAGE_SIZE,
     "an SV39 page table must occupy exactly one page"
 );

@@ -26,6 +26,9 @@ user_image_start:
     addi a7, zero, SYSCALL_PUTCHAR
     ecall
 
+    addi a7, zero, SYSCALL_EXIT
+    ecall
+
 1:
     addi t0, t0, 1
     j 1b

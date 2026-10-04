@@ -2,5 +2,6 @@
 *.d
 kernel.elf
 /test/tinyos_tests
+/test/build/
 compile_commands.json
 .cache/
