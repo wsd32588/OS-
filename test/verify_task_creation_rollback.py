@@ -152,9 +152,9 @@ def run() -> None:
     repository = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="tinyos-task-rollback-") as temporary:
         workspace = Path(temporary)
-        for name in ("include", "kernel", "drivers"):
+        for name in ("include", "kernel", "drivers", "user"):
             shutil.copytree(repository / name, workspace / name,
-                            ignore=shutil.ignore_patterns("*.o", "*.d"))
+                            ignore=shutil.ignore_patterns("*.o", "*.d", "build"))
         for name in ("Makefile", "linker.ld"):
             shutil.copy2(repository / name, workspace / name)
         main = workspace / "kernel/main.c"

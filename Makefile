@@ -1,5 +1,6 @@
 CC = riscv64-linux-gnu-gcc
 LD = riscv64-linux-gnu-ld
+OBJCOPY = riscv64-linux-gnu-objcopy
 QEMU = qemu-system-riscv64
 HOST_CC ?= cc
 HOST_CXX ?= c++
@@ -21,6 +22,17 @@ CFLAGS = -Wall -Wextra -O0 -g \
 
 DEPFLAGS = -MMD -MP
 
+USER_BUILD_DIR = user/build
+USER_OBJS = \
+    $(USER_BUILD_DIR)/start.o \
+    $(USER_BUILD_DIR)/syscall.o \
+    $(USER_BUILD_DIR)/main.o
+
+USER_CFLAGS = $(ARCH_FLAGS) -std=c11 -Wall -Wextra -O0 -g \
+    -ffreestanding -fno-builtin -fno-stack-protector -fno-pie \
+    -fno-unwind-tables -fno-asynchronous-unwind-tables \
+    -msmall-data-limit=0 -Iinclude -Iuser
+
 OBJS = \
     kernel/entry.o \
     kernel/main.o \
@@ -35,13 +47,33 @@ OBJS = \
 	kernel/user_entry.o \
 	kernel/syscall.o \
 	kernel/user_memory.o \
+	kernel/user_access.o \
     drivers/uart.o
 
-DEPS = $(OBJS:.o=.d)
+DEPS = $(OBJS:.o=.d) $(USER_OBJS:.o=.d)
 
-.PHONY: all clean compdb debug qemu sync test test-qemu
+.PHONY: all user clean compdb debug qemu sync test test-qemu
 
 all: kernel.elf
+
+user: $(USER_BUILD_DIR)/demo.bin
+
+$(USER_BUILD_DIR):
+	mkdir -p $@
+
+$(USER_BUILD_DIR)/%.o: user/%.c | $(USER_BUILD_DIR)
+	$(CC) $(USER_CFLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(USER_BUILD_DIR)/%.o: user/%.S | $(USER_BUILD_DIR)
+	$(CC) $(USER_CFLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(USER_BUILD_DIR)/demo.elf: $(USER_OBJS) user/user.ld
+	$(LD) --no-relax -T user/user.ld $(USER_OBJS) -o $@
+
+$(USER_BUILD_DIR)/demo.bin: $(USER_BUILD_DIR)/demo.elf
+	$(OBJCOPY) -O binary $< $@
+
+kernel/user_entry.o: $(USER_BUILD_DIR)/demo.bin
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
@@ -86,7 +118,8 @@ compdb: test
 
 clean:
 	rm -f kernel/*.o kernel/*.d drivers/*.o drivers/*.d kernel.elf \
-		*.o *.d test/tinyos_tests
+		*.o *.d test/tinyos_tests $(USER_OBJS) $(USER_OBJS:.o=.d) \
+		$(USER_BUILD_DIR)/demo.elf $(USER_BUILD_DIR)/demo.bin
 	if [ -f "$(TEST_BUILD_DIR)/CMakeCache.txt" ]; then \
 		$(CMAKE) --build "$(TEST_BUILD_DIR)" --target clean; \
 	fi

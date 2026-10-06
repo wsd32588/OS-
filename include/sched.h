@@ -33,4 +33,5 @@ int task_create_user(
     UserMemory* memory
 );
 
+const Sv39PageTable* sched_current_user_root(void);
 #endif

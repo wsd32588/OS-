@@ -7,6 +7,7 @@ extern "C" {
 #include "uart.h"
 #include "user_memory.h"
 #include "vm_arch.h"
+#include "user_access.h"
 }
 
 #endif

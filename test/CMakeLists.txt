@@ -18,6 +18,7 @@ add_library(tinyos_test_kernel STATIC
     "${TINYOS_SOURCE_DIR}/kernel/pmm.c"
     "${TINYOS_SOURCE_DIR}/kernel/vm.c"
     "${TINYOS_SOURCE_DIR}/kernel/user_memory.c"
+    "${TINYOS_SOURCE_DIR}/kernel/user_access.c"
 )
 set_target_properties(tinyos_test_kernel PROPERTIES
     C_STANDARD 11

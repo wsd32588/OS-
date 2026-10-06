@@ -386,6 +386,20 @@ struct trap_frame* sched_on_sleep(
     return sched_reschedule(frame);
 }
 
+const Sv39PageTable* sched_current_user_root(void) {
+    if (current_task < 0 ||
+        current_task >= task_count
+    ) {
+        return NULL;
+    }
+
+    if (tasks[current_task].state != TASK_RUNNING) {
+        return NULL;
+    }
+
+    return tasks[current_task].user_memory.root;
+}
+
 int scheduler_start(void) {
     if (task_count == 0) {
         return -1;

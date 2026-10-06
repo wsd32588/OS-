@@ -6,7 +6,7 @@
 运行 `make test`。需要 CMake 3.20+ 和支持 C++20 的 Linux/WSL 宿主编译器，
 可用 `HOST_CC`、`HOST_CXX` 指定。根 Makefile 只转交配置、构建和 CTest 运行；
 测试的构建规则集中在 `test/CMakeLists.txt`。
-测试由 C++ 编译；实际 `kernel/pmm.c`、`kernel/vm.c`、`kernel/user_memory.c`
+测试由 C++ 编译；实际 `kernel/pmm.c`、`kernel/vm.c`、`kernel/user_memory.c`、`kernel/user_access.c`
 仍由宿主 C 编译器分别编译，再通过 `c_api.hpp` 的 C 链接接口调用。
 宿主构建产物保存在 `test/build/cmake/`，与 RISC-V 内核对象分开。
 
@@ -35,6 +35,7 @@ CMake 导出宿主 `test/build/cmake/compile_commands.json`。
 - `host_support.cpp` 集中提供 UART/flush 替代，以及 unmap/free 的链接包装、调用计数和事件记录。
 - `user_memory_fixture.hpp` 集中准备页池、根页表、实际拥有的代码/栈页和映射，并提供资源释放检查。
 - `test_user_memory.cpp` 覆盖 H1 正常释放、H2 重复释放及初始空描述释放、H3 代码/栈各自 PA 不符或缺 U、H4 栈页释放失败后的重试、H5 手动解除叶映射后的释放、H6 非法参数、H7 保留其他映射，以及 H8 两处 flush 失败后的重试。
+- `test_user_access.cpp` 集中运行 12 个用户内存复制场景：带偏移/NUL 的单页、虚拟连续而物理分隔的跨页、第二页缺映射/U/R、起点缺映射、NULL、零长度、溢出、起点/末字节非 canonical，以及 UINTPTR_MAX 处的单字节。检查源数据、页表、映射、页数、调用记录和目标哨兵，失败允许合法前缀；完整范围见 [USER_ACCESS_REQUIREMENTS.md](USER_ACCESS_REQUIREMENTS.md)。
 
 H1 检查两处映射消失、四页归还、描述全空、根页表没有被 free，
 以及 unmap/flush/free 的顺序。H2 使用公共模板比较返回值及完整状态快照：
@@ -94,3 +95,26 @@ make test-qemu
 脚本各自建立并清理临时源码副本，探针不会写入工作区内核。
 通过由内核探针检查实际返回值、描述、页数和映射后输出标记；缺少工具、构建失败、
 检查失败或限时内缺少所需标记均返回非零。限时结束观察本身不表示通过。
+
+WRITE 的 Python 教学脚本为 `verify_syscall_write.py`，作者已实现并分批验证
+12 个场景：baseline、length_zero、unmapped_start、length_256、length_257、
+binary_bytes、noncanonical、address_overflow、kernel_missing_u、
+cross_page_unmapped、execute_only、cross_page_valid。
+运行 `python3 -u test/verify_syscall_write.py`，
+也可在命令末尾指定场景名称；未知名称会报错。脚本复制源码到临时目录，
+基线使用当前用户镜像，生成场景替换临时副本的 user_entry.S，再构建、运行 QEMU。
+每场景的 prepare_main 从仓库原始 main.c 开始，应用可选的 main_replacements，
+防止上一例的权限变化污染后例；execute_only 去除用户代码页的 R 位，
+cross_page_valid 临时分配间隔页并检查代码/栈 PA 不相邻。
+用户汇编比较返回值，通过/失败分别输出 0x01/0x02；WRITE 前后输出 0x03/0x04，
+Python 精确比较两者之间的原始字节，零长度要求空字节串 `b""`。
+目前这些控制字节保留作探针标记，新增测试数据应避开 0x01..0x04。
+保留原始 bytes 是为了后续检查 NUL；构建日志使用 text，UART 日志不做文本解码。
+WRITE 本批功能验收已完成；root getter 边界在临时 QEMU 副本验证，尚未持久化。
+WRITE 脚本尚未加入 make test-qemu，完整回归需要另行执行上述命令。
+
+独立 C 用户程序已验收，构建和使用范围见
+[USER_PROGRAM_REQUIREMENTS.md](USER_PROGRAM_REQUIREMENTS.md)。基线使用
+user/main.c 独立链接的镜像，经 objcopy 和 kernel/user_entry.S 的 incbin 嵌入内核。
+三个 QEMU 脚本均复制 user 源码并忽略 build，临时工程从源码重建镜像。
+2026-10-07 完整 12 个 WRITE 场景与宿主回归通过；旧 Q1/Q2 由作者报告通过。

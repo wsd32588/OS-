@@ -5,6 +5,8 @@
 #define SYSCALL_YIELD       2
 #define SYSCALL_EXIT        3
 #define SYSCALL_SLEEP       4
+#define SYSCALL_WRITE       5
+#define SYSCALL_WRITE_MAX   256
 
 #ifndef __ASSEMBLER__
 struct trap_frame;

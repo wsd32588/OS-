@@ -11,6 +11,17 @@
 namespace tinyos_test {
 
 // PMM has global state: keep one active pool and run these tests sequentially.
+/*
+ * GCC -O2 会把 PagePool 构造内联进 fixture，并误报
+ * “‘fixture’ may be used uninitialized”。
+ * storage_ 已经由 storage_{} 值初始化，这里只屏蔽这条已知误报；
+ * Clang 不认识 GCC 的 -Wmaybe-uninitialized，所以显式排除。
+ */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 template <std::size_t PageCount>
 class PagePool {
 public:
@@ -27,6 +38,10 @@ public:
 private:
     alignas(SV39_PAGE_SIZE) std::array<uint8_t, PageCount * SV39_PAGE_SIZE> storage_{};
 };
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 class UserMemoryFixture {
 private:
