@@ -1,8 +1,38 @@
+# Shared with make sync via rsync --exclude-from; keep rules without ! negation.
+# Tool downloads, environments, generated architecture reports and clangd indexes.
+.cache/
+
+# Local editor logs and Windows download metadata.
+.nvimlog
+*:Zone.Identifier
+
+# DeepSeek collaborator's private memory (see DEEPSEEK_MEMORY_DATA.MD); not committed and not synced.
+/DEEPSEEK_MEMORY_DATA.MD
+
+# Build directories (kernel/user/host tests and independent experiments).
+build/
+cmake-build-*/
+target/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+
+# Compiled objects, dependencies, libraries and executable images.
 *.o
 *.d
-kernel.elf
+*.a
+*.so
+*.so.*
+*.elf
+*.bin
 /test/tinyos_tests
-/test/build/
-/user/build/
 compile_commands.json
-.cache/
+
+# Python bytecode and local virtual environments.
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

@@ -1,4 +1,5 @@
 CC = riscv64-linux-gnu-gcc
+CXX = clang++
 LD = riscv64-linux-gnu-ld
 OBJCOPY = riscv64-linux-gnu-objcopy
 QEMU = qemu-system-riscv64
@@ -7,6 +8,7 @@ HOST_CXX ?= c++
 CMAKE ?= cmake
 CTEST ?= ctest
 TEST_BUILD_DIR ?= test/build/cmake
+SYNC_DEST ?= /mnt/d/PROJECTS/C/tinyos
 
 ARCH_FLAGS = -march=rv64imac_zicsr_zifencei \
              -mabi=lp64 \
@@ -19,6 +21,16 @@ CFLAGS = -Wall -Wextra -O0 -g \
          -fno-pie \
          -Iinclude \
          $(ARCH_FLAGS)
+
+CXXFLAGS = --target=riscv64-unknown-elf \
+           -std=c++20 -Wall -Wextra -Wpedantic -O0 -g \
+           -ffreestanding \
+           -fno-exceptions -fno-rtti -fno-threadsafe-statics \
+           -fno-stack-protector -fno-pie \
+           -fno-unwind-tables -fno-asynchronous-unwind-tables \
+           -Iinclude \
+		   -Ifreestanding \
+           $(ARCH_FLAGS)
 
 DEPFLAGS = -MMD -MP
 
@@ -34,25 +46,32 @@ USER_CFLAGS = $(ARCH_FLAGS) -std=c11 -Wall -Wextra -O0 -g \
     -msmall-data-limit=0 -Iinclude -Iuser
 
 OBJS = \
-    kernel/entry.o \
-    kernel/main.o \
-    kernel/pmm.o \
-    kernel/trap_entry.o \
-    kernel/trap.o \
-    kernel/sbi.o \
-    kernel/timer.o \
-    kernel/sched.o \
-	kernel/vm.o \
-	kernel/vm_arch.o \
-	kernel/user_entry.o \
-	kernel/syscall.o \
-	kernel/user_memory.o \
-	kernel/user_access.o \
+    kernel/boot/entry.o \
+    kernel/boot/main.o \
+    kernel/boot/private/kernel_vm.o \
+    kernel/boot/private/demo_tasks.o \
+    kernel/boot/private/user_prepare.o \
+    kernel/boot/private/boot_stages.o \
+    kernel/mm/pmm.o \
+    kernel/arch/riscv/trap_entry.o \
+    kernel/task/trap.o \
+    kernel/arch/riscv/sbi.o \
+    kernel/task/timer.o \
+    kernel/task/sched.o \
+    kernel/mm/vm.o \
+    kernel/arch/riscv/vm_arch.o \
+    kernel/user/user_entry.o \
+    kernel/task/syscall.o \
+    kernel/mm/user_memory.o \
+    kernel/mm/user_access.o \
+    kernel/user/user_image.o \
+    kernel/user/user_elf.o \
+    lib/string.o \
     drivers/uart.o
 
 DEPS = $(OBJS:.o=.d) $(USER_OBJS:.o=.d)
 
-.PHONY: all user clean compdb debug qemu sync test test-qemu
+.PHONY: all user clean compdb debug qemu sync sync-dry-run test test-qemu
 
 all: kernel.elf
 
@@ -73,10 +92,13 @@ $(USER_BUILD_DIR)/demo.elf: $(USER_OBJS) user/user.ld
 $(USER_BUILD_DIR)/demo.bin: $(USER_BUILD_DIR)/demo.elf
 	$(OBJCOPY) -O binary $< $@
 
-kernel/user_entry.o: $(USER_BUILD_DIR)/demo.bin
+kernel/user/user_entry.o: $(USER_BUILD_DIR)/demo.bin
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 %.o: %.S
 	$(CC) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
@@ -118,6 +140,9 @@ compdb: test
 
 clean:
 	rm -f kernel/*.o kernel/*.d drivers/*.o drivers/*.d kernel.elf \
+		kernel/*/*.o kernel/*/*.d kernel/*/*/*.o kernel/*/*/*.d \
+		kernel/arch/riscv/*.o kernel/arch/riscv/*.d \
+		lib/*.o lib/*.d \
 		*.o *.d test/tinyos_tests $(USER_OBJS) $(USER_OBJS:.o=.d) \
 		$(USER_BUILD_DIR)/demo.elf $(USER_BUILD_DIR)/demo.bin
 	if [ -f "$(TEST_BUILD_DIR)/CMakeCache.txt" ]; then \
@@ -126,7 +151,39 @@ clean:
 
 -include $(DEPS)
 
+# Keep .gitignore patterns compatible with rsync --exclude-from (no ! rules).
+SYNC_EXCLUDES = --exclude='.git' --exclude-from="$(CURDIR)/.gitignore"
+
 sync:
-	@mkdir -p /mnt/d/PROJECTS/C/tinyos
-	rsync -av --exclude='*.o' --exclude='*.d' --exclude='*.elf' --exclude='.git' ~/tinyos/ /mnt/d/PROJECTS/C/tinyos/
-	@echo "[+] Synced to Windows D: drive successfully!"
+	@mkdir -p "$(SYNC_DEST)"
+	rsync -av $(SYNC_EXCLUDES) "$(CURDIR)/" "$(SYNC_DEST)/"
+	@echo "[+] Synced source files to $(SYNC_DEST)"
+
+sync-dry-run:
+	rsync -av --dry-run --stats $(SYNC_EXCLUDES) "$(CURDIR)/" "$(SYNC_DEST)/"
+
+# Optional local analysis: does not participate in kernel/test builds.
+ARCHITECTURE_SCOPE ?= kernel
+ARCHITECTURE_PYTHON ?= .cache/architecture/venv/bin/python
+.PHONY: architecture-install architecture architecture-libclang architecture-uml architecture-joern architecture-test
+architecture-install:
+	python3 tools/architecture/install.py
+
+architecture: architecture-libclang architecture-uml architecture-joern
+
+architecture-libclang:
+	$(ARCHITECTURE_PYTHON) tools/architecture/analyze.py libclang --scope $(ARCHITECTURE_SCOPE)
+
+architecture-uml:
+	$(ARCHITECTURE_PYTHON) tools/architecture/analyze.py uml --scope $(ARCHITECTURE_SCOPE)
+
+architecture-joern:
+	$(ARCHITECTURE_PYTHON) tools/architecture/analyze.py joern --scope $(ARCHITECTURE_SCOPE)
+
+architecture-test:
+	$(ARCHITECTURE_PYTHON) -B tools/architecture/test_analyze.py
+	$(ARCHITECTURE_PYTHON) -B tools/architecture/test_export.py
+
+.PHONY: architecture-export
+architecture-export:
+	$(ARCHITECTURE_PYTHON) -B tools/architecture/export.py --scope $(ARCHITECTURE_SCOPE)

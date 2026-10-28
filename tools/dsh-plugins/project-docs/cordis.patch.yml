@@ -1,0 +1,4 @@
+# Project docs shortcut: Host half is inert; the Client module opens files.
+- insert:
+    - id: dsh-project-docs
+      name: '@local/dsh-project-docs'

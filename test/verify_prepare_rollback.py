@@ -172,15 +172,15 @@ def run() -> None:
     repository = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="tinyos-prepare-rollback-") as temporary:
         workspace = Path(temporary)
-        for name in ("include", "kernel", "drivers", "user"):
+        for name in ("include", "kernel", "drivers", "user", "lib"):
             shutil.copytree(repository / name, workspace / name,
                             ignore=shutil.ignore_patterns("*.o", "*.d", "build"))
         for name in ("Makefile", "linker.ld"):
             shutil.copy2(repository / name, workspace / name)
 
-        main = workspace / "kernel/main.c"
-        source = main.read_text()
-        definition = "void kernel_main(unsigned long hart_id, const void* device_tree) {"
+        stages = workspace / "kernel/boot/private/boot_stages.c"
+        source = stages.read_text()
+        definition = "void boot_console(unsigned long hart_id, const void* device_tree) {"
         call = "    if (prepare_demo_user_memory("
         if source.count(definition) != 1 or source.count(call) != 1:
             raise SystemExit("Cannot locate the current kernel setup; update probe anchors.")
@@ -193,7 +193,7 @@ def run() -> None:
     }
 
 """ + call)
-        main.write_text(source)
+        stages.write_text(source)
 
         linker = "riscv64-linux-gnu-ld --wrap=pmm_alloc_page --wrap=sv39_flush_page"
         build = subprocess.run(["make", f"LD={linker}"], cwd=workspace,

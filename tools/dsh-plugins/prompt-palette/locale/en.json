@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Prompt palette",
+    "description": "A composer button that inserts reusable prompts and recent requests at the caret."
+  }
+}

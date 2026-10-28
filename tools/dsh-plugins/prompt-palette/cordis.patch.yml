@@ -1,0 +1,4 @@
+# Prompt palette: Host half is inert; the Client module owns the composer button.
+- insert:
+    - id: dsh-prompt-palette
+      name: '@local/dsh-prompt-palette'

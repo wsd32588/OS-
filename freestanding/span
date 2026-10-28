@@ -1,0 +1,66 @@
+#pragma once
+#include <cstddef>
+#include <stdint.h>
+
+#ifndef KERNEL_ASSERT
+extern "C" [[noreturn]] void kernel_panic(const char* file, int line, const char* msg);
+#define KERNEL_ASSERT(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            kernel_panic(__FILE__, __LINE__, msg); \
+        } \
+    } while (0)
+#endif
+
+namespace std {
+
+template <typename T>
+class span {
+public:
+    constexpr span() noexcept : data_(nullptr), size_(0) {}
+    constexpr span(T* ptr, size_t count) noexcept : data_(ptr), size_(count) {
+        if ((ptr == nullptr && count != 0) ||
+            count > SIZE_MAX / sizeof(T)) {
+            __builtin_trap();
+        }
+    }
+
+    template <size_t N>
+    constexpr span(T (&arr)[N]) noexcept : data_(arr), size_(N) {}
+
+    [[nodiscard]] constexpr T* data() const noexcept { return data_; }
+    [[nodiscard]] constexpr size_t size() const noexcept { return size_; }
+    [[nodiscard]] constexpr size_t size_bytes() const noexcept { return size_ * sizeof(T); }
+    [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
+
+    constexpr T& operator[](size_t idx) const noexcept {
+        // operator[] 返回元素之前
+        if (idx >= size_) {
+            __builtin_trap();
+        }
+        return data_[idx]; // 裸机下不抛异常，需要时做 PANIC 检查
+    }
+
+    constexpr T* begin() const noexcept { return data_; }
+    constexpr T* end() const noexcept { return data_ + size_; }
+
+    constexpr span<T> subspan(size_t offset, size_t count) const noexcept {
+        if (offset > size_ ||
+            count > size_ - offset
+        ) {
+            __builtin_trap();
+        }
+
+        T* start = data_;
+        if (offset != 0) {
+            start += offset;
+        }
+        return span<T>(start, count);
+    }
+
+private:
+    T* data_;
+    size_t size_;
+};
+
+} // namespace std

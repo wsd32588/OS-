@@ -121,7 +121,7 @@ def replace_once(source: str, anchor: str, replacement: str) -> str:
 
 
 def instrument(source: str) -> str:
-    definition = "void kernel_main(unsigned long hart_id, const void* device_tree) {"
+    definition = "void boot_console(unsigned long hart_id, const void* device_tree) {"
     source = replace_once(source, definition, PROBE + "\n" + definition)
     preparation = "    if (prepare_demo_user_memory("
     source = replace_once(source, preparation, """    g_probe_root = kernel_root;
@@ -152,13 +152,13 @@ def run() -> None:
     repository = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="tinyos-task-rollback-") as temporary:
         workspace = Path(temporary)
-        for name in ("include", "kernel", "drivers", "user"):
+        for name in ("include", "kernel", "drivers", "user", "lib"):
             shutil.copytree(repository / name, workspace / name,
                             ignore=shutil.ignore_patterns("*.o", "*.d", "build"))
         for name in ("Makefile", "linker.ld"):
             shutil.copy2(repository / name, workspace / name)
-        main = workspace / "kernel/main.c"
-        main.write_text(instrument(main.read_text()))
+        stages = workspace / "kernel/boot/private/boot_stages.c"
+        stages.write_text(instrument(stages.read_text()))
 
         linker = "riscv64-linux-gnu-ld --wrap=pmm_free_page"
         build = subprocess.run(["make", f"LD={linker}"], cwd=workspace,

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyOS 架构图</title>
+<style>
+body { margin: 24px; font: 16px/1.5 system-ui, sans-serif; color: #18212f; background: #f7f9fc; }
+h1 { font-size: 24px; font-weight: 500; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 16px 0; }
+select, button { padding: 8px; font: inherit; max-width: 100%; }
+.viewport { overflow: auto; max-height: 75vh; padding: 20px; background: white; border: 1px solid #ccd4df; }
+img { display: block; max-width: none; }
+.note { color: #526074; }
+a { color: #2557ae; }
+</style>
+<h1>TinyOS · __SCOPE__ 静态架构图</h1>
+<div class="controls">
+<label>图表 <select id="diagram">__OPTIONS__</select></label>
+<label>缩放 <input id="zoom" type="range" min="25" max="200" value="100"> <span id="scale">100%</span></label>
+<a id="svg-link" download>下载 SVG</a>
+<a id="dot-link" download>下载 DOT</a>
+</div>
+<p class="note">箭头：调用者 → 被调用函数，源文件 → 包含的头文件。CFG 箭头表示控制流。图表可滚动查看；汇编、trap 和间接调用未完整覆盖。</p>
+<div class="viewport"><img id="picture" alt="选中的静态架构图"></div>
+<p id="status" role="status" aria-live="polite"></p>
+<script>
+const selector = document.getElementById('diagram');
+const zoom = document.getElementById('zoom');
+const picture = document.getElementById('picture');
+const status = document.getElementById('status');
+function resize() {
+  picture.style.width = (picture.naturalWidth * Number(zoom.value) / 100) + 'px';
+  document.getElementById('scale').textContent = zoom.value + '%';
+}
+function show() {
+  const name = selector.value;
+  picture.src = name + '.svg';
+  picture.alt = selector.selectedOptions[0].textContent;
+  document.getElementById('svg-link').href = name + '.svg';
+  document.getElementById('dot-link').href = name + '.dot';
+  status.textContent = picture.alt;
+}
+picture.addEventListener('load', resize);
+picture.addEventListener('error', () => { status.textContent = '图片加载失败，请保持 index.html 和 SVG 文件在同一目录。'; });
+selector.addEventListener('change', show);
+zoom.addEventListener('input', resize);
+show();
+</script>
+</html>

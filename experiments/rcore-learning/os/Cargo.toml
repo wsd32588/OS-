@@ -1,0 +1,17 @@
+[package]
+name = "rcore-learning-os"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+buddy_system_allocator = "=0.6.0"
+sbi-rt = { version = "=0.0.2", features = ["legacy"] }
+spin = "=0.7.2"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+debug = true

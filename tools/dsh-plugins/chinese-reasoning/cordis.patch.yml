@@ -1,0 +1,4 @@
+# Global prompt section: every agent reasons in Simplified Chinese.
+- insert:
+    - id: dsh-chinese-reasoning
+      name: '@local/dsh-chinese-reasoning'

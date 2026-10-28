@@ -1,4 +1,4 @@
-#include "syscall.h"
+#include "task/syscall.h"
 .section .text.entry, "ax", @progbits
 .option norelax
 .global _start

@@ -1,0 +1,54 @@
+{
+  "checked_on": "2026-10-11",
+  "learning_series": "rCore-Tutorial v3.6 chapter sequence; book title 3.6.0-alpha.1",
+  "book": {
+    "repository": "https://github.com/rcore-os/rCore-Tutorial-Book-v3",
+    "online": "https://rcore-os.cn/rCore-Tutorial-Book-v3/",
+    "commit": "fe16ac12feea76333a6d189bbabf09594ff94cef"
+  },
+  "code": {
+    "repository": "https://github.com/rcore-os/rCore-Tutorial-v3",
+    "chapters": {
+      "ch1": "85fe952a04c4b671fef1beb2f470591ae7ea5123",
+      "ch2": "fc4af3367b7feebb2287b15fe3ff23757471e571",
+      "ch3": "9ca4aedb66f626dcc72f835a5946742a82b61c7c",
+      "ch4": "f384222b9b5bf33c4eb6b1a87ad5a7a2b8122c79",
+      "ch5": "a55bd5598a19cd5878af9bd8211540cff48dd4d1",
+      "ch6": "47bbec297476f0009b8b3ac99fc9fb11743bd837",
+      "ch7": "af89affce453082c4aacd646b9bd908eba5cee79",
+      "ch8": "3b1bc659ffdbbe0dcf457ddd81ed45261bf3dc75",
+      "ch9": "209476f27359b47cd6534ebb91afc5d01692b429"
+    },
+    "validated_chapters": ["ch1"],
+    "inspected_chapters": ["ch1", "ch2", "ch3", "ch4"],
+    "ch1_archive_sha256": "db481b41c900e2eafb67e6db3edc05001b029dcda5561dc7053f73bf7bbd7e0d",
+    "reference_dependency_lock": "versions/ch1-reference.Cargo.lock"
+  },
+  "compiler": {
+    "upstream_channel": "stable",
+    "tested_rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "commit_hash": "48a229ceaefd4985c50990b14116b6d856af0985",
+    "target": "riscv64gc-unknown-none-elf",
+    "edition": "2024",
+    "selection": "reuse installed stable only while exact rustc version matches"
+  },
+  "firmware": {
+    "path_in_code": "bootloader/rustsbi-qemu.bin",
+    "size_bytes": 32328,
+    "sha256": "31f5d013f81421ed9fd33208dfa1c3796f9d72bd11c0f939566581ac2f3e97d3",
+    "git_blob": "f9015b81a17ef461aec196971b2dec52957bf51f",
+    "origin_update_commit": "0b13333b90ab29357ae06135884c658d63e24555",
+    "source_repository": "https://github.com/rustsbi/rustsbi-qemu",
+    "source_revision": "a4f0bbe44d9f2f1069a9e5becd09f291e542852c",
+    "observed_library_version": "0.3.1",
+    "observed_platform_package_version": "0.2.0-alpha.2"
+  },
+  "qemu": {
+    "upstream_docker_example": "7.0.0",
+    "tested_local": "10.2.1",
+    "machine": "virt",
+    "harts": 1,
+    "memory": "128M",
+    "kernel_entry": "0x80200000"
+  }
+}

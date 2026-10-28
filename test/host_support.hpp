@@ -31,8 +31,10 @@ struct MemoryDescriptor {
     Sv39PageTable *root;
     void *code_page;
     void *stack_page;
+    void *data_page;
     uintptr_t code_address;
     uintptr_t stack_address;
+    uintptr_t data_address;
     bool operator==(const MemoryDescriptor &) const = default;
 };
 
@@ -49,10 +51,12 @@ struct UserMemoryState {
     CallCounts calls;
     Mapping code_mapping;
     Mapping stack_mapping;
+    Mapping data_mapping;
     bool operator==(const UserMemoryState &) const = default;
 };
 
 Mapping query_mapping(const Sv39PageTable *root, uint64_t address);
+MemoryDescriptor describe(const UserMemory &memory);
 UserMemoryState capture_user_memory(const UserMemory &memory);
 std::ostream &operator<<(std::ostream &stream, const MemoryDescriptor &memory);
 std::ostream &operator<<(std::ostream &stream, const CallCounts &calls);

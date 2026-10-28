@@ -1,0 +1,54 @@
+[package]
+name = "rcore-learning-user"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "user_lib"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "hello"
+path = "src/bin/hello.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "hello_peer"
+path = "src/bin/hello_peer.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "image_demo"
+path = "src/bin/image_demo.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "syscall_demo"
+path = "src/bin/syscall_demo.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "task_demo"
+path = "src/bin/task_demo.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "preempt_demo"
+path = "src/bin/preempt_demo.rs"
+test = false
+bench = false
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+debug = true

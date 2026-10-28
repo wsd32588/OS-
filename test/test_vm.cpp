@@ -1,5 +1,7 @@
 #include "test_vm.h"
 
+#include "mm/address.hpp"
+#include "mm/page_table_entry.hpp"
 #include "c_api.hpp"
 #include "test_support.hpp"
 
@@ -29,6 +31,97 @@ static int test_size(void) {
     CHECK_EQ(sizeof(Sv39Pte), 8);
     CHECK_EQ(SV39_PTE_COUNT, 512);
     CHECK_EQ(sizeof(Sv39PageTable), SV39_PAGE_SIZE);
+    return 0;
+}
+
+static int test_typed_addresses_and_pages(void) {
+    static_assert(!std::is_convertible_v<PhysAddr, VirtAddr>);
+    static_assert(!std::is_convertible_v<PhysPageNum, VirtPageNum>);
+    static_assert(std::is_same_v<decltype(std::declval<PhysAddr&>() += 1), PhysAddr&>);
+    static_assert(std::is_standard_layout_v<Sv39PageTable>);
+    static_assert(std::is_trivially_copyable_v<Sv39PageTable>);
+
+    const VirtAddr high(UINT64_C(0xffffffc000001234));
+    const VirtPageNum high_page = VirtPageNum::from_floor(high);
+    CHECK(high.is_valid());
+    CHECK_EQ(high.page_offset(), UINT64_C(0x234));
+    CHECK_EQ(high_page.val(), UINT64_C(0x4000001));
+    CHECK_EQ(high_page.to_addr().val(), UINT64_C(0xffffffc000001000));
+    CHECK_EQ(VirtPageNum(UINT64_C(0x4000001)).to_addr().val(),
+             UINT64_C(0xffffffc000001000));
+
+    const VirtPageNum vpn = VirtPageNum::from_floor(VirtAddr(UINT64_C(0x80401234)));
+    CHECK_EQ(vpn.index(2), 2U);
+    CHECK_EQ(vpn.index(1), 2U);
+    CHECK_EQ(vpn.index(0), 1U);
+    CHECK_EQ(vpn.index(3), SV39_INVALID_INDEX);
+    CHECK_EQ(vpn.index(UINT32_MAX), SV39_INVALID_INDEX);
+
+    CHECK(PhysAddr((UINT64_C(1) << 56) - 1).is_valid());
+    CHECK(!PhysAddr(UINT64_C(1) << 56).is_valid());
+    CHECK(!VirtAddr(UINT64_C(0x4000000000)).is_valid());
+    CHECK(!VirtPageNum(UINT64_C(1) << 27).is_valid());
+    CHECK(!PhysPageNum(UINT64_C(1) << 44).is_valid());
+    CHECK_EQ(PhysPageNum(PhysPageNum::VALUE_MASK).to_addr().val(),
+             UINT64_C(0x00fffffffffff000));
+    CHECK_EQ(PhysPageNum::from_floor(PhysAddr(0x1234)).val(), UINT64_C(1));
+    CHECK_EQ(PhysPageNum::from_ceil(PhysAddr(0x1234)).val(), UINT64_C(2));
+
+    PhysAddr address(0x1000);
+    CHECK(&(address += 0x1000) == &address);
+    CHECK_EQ(address.val(), UINT64_C(0x2000));
+    address -= 0x1000;
+    CHECK_EQ(address.val(), UINT64_C(0x1000));
+    CHECK_EQ(address - PhysAddr(0x2000), ptrdiff_t{-0x1000});
+
+    PhysAddr physical_result(0x9000);
+    CHECK(!PhysAddr(UINTPTR_MAX).try_page_up(physical_result));
+    CHECK(!PhysAddr(0).try_sub(1, physical_result));
+    CHECK_EQ(physical_result.val(), UINT64_C(0x9000));
+    VirtAddr virtual_result(0x9000);
+    CHECK(!VirtAddr(UINT64_C(0x3fffffffff)).try_page_up(virtual_result));
+    CHECK(!VirtAddr(UINTPTR_MAX).try_page_up(virtual_result));
+    CHECK_EQ(virtual_result.val(), UINT64_C(0x9000));
+
+    PhysPageNum page_result(7);
+    CHECK(!PhysPageNum(0).try_offset(-1, page_result));
+    CHECK(!PhysPageNum(0).try_offset(INT64_MIN, page_result));
+    CHECK(!PhysPageNum(PhysPageNum::VALUE_MASK).try_offset(1, page_result));
+    CHECK(!PhysPageNum::try_from_ceil(
+        PhysAddr((UINT64_C(1) << 56) - 1), page_result));
+    CHECK_EQ(page_result.val(), UINT64_C(7));
+
+    puts("[PASS] typed addresses: high VPN, indexes and checked boundaries");
+    return 0;
+}
+
+static int test_typed_pte_and_legacy_codecs(void) {
+    const auto entry = PageTableEntry::from_page(
+        PhysPageNum(UINT64_C(0x80208)), SV39_PTE_V | SV39_PTE_R);
+    CHECK_EQ(entry.ppn().val(), UINT64_C(0x80208));
+    CHECK_EQ(entry.physical_address().val(), UINT64_C(0x80208000));
+    CHECK(entry.is_valid());
+    CHECK(entry.is_leaf());
+
+    // These helpers intentionally decode raw bits, including noncanonical inputs.
+    CHECK_EQ(sv39_vpn_index(UINT64_C(0x4000001000), 2), 256U);
+    CHECK_EQ(sv39_vpn_index(UINT64_MAX, UINT32_MAX), SV39_INVALID_INDEX);
+    CHECK_EQ(sv39_make_pte(UINT64_C(0x1001), UINT64_C(0x301)), UINT64_C(0x401));
+    CHECK_EQ(sv39_pte_physical_address(sv39_make_pte(UINT64_MAX, 0)),
+             UINT64_C(0x00fffffffffff000));
+
+    const Sv39Pte raw = (UINT64_C(1) << 63) | UINT64_C(0x300) |
+        SV39_PTE_V | SV39_PTE_X;
+    const PageTableEntry raw_entry(raw);
+    CHECK_EQ(raw_entry.val(), raw);
+    CHECK_EQ(raw_entry.flags(), SV39_PTE_V | SV39_PTE_X);
+    CHECK_EQ(raw_entry.ppn().val(), UINT64_C(0));
+    CHECK(raw_entry.is_valid());
+    CHECK(raw_entry.is_leaf());
+    CHECK(!PageTableEntry(SV39_PTE_V | SV39_PTE_W).is_valid());
+    CHECK(!PageTableEntry(SV39_PTE_V).is_leaf());
+
+    puts("[PASS] typed PTE: raw entries and legacy codec compatibility");
     return 0;
 }
 
@@ -798,6 +891,8 @@ static int test_sv39_reclaim_after_allocation_failure(void) {
 
 int test_vm(void) {
     if (test_size() != 0) return -1;
+    if (test_typed_addresses_and_pages() != 0) return -1;
+    if (test_typed_pte_and_legacy_codecs() != 0) return -1;
     if (test_canonical() != 0) return -1;
     if (test_vpn_index() != 0) return -1;
     if (test_pte_roundtrip() != 0) return -1;

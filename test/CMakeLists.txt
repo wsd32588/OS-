@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(TinyOSHostTests LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 20)
 
 if(CMAKE_CROSSCOMPILING OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "TinyOS host tests require a native Linux/WSL build")
@@ -15,15 +16,19 @@ get_filename_component(TINYOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLU
 
 # Select only kernel algorithms that can run without RISC-V instructions.
 add_library(tinyos_test_kernel STATIC
-    "${TINYOS_SOURCE_DIR}/kernel/pmm.c"
-    "${TINYOS_SOURCE_DIR}/kernel/vm.c"
-    "${TINYOS_SOURCE_DIR}/kernel/user_memory.c"
-    "${TINYOS_SOURCE_DIR}/kernel/user_access.c"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/pmm.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/vm.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/user_memory.c"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/user_access.c"
+    "${TINYOS_SOURCE_DIR}/kernel/user/user_image.cpp"
 )
 set_target_properties(tinyos_test_kernel PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED YES
     C_EXTENSIONS NO
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
 )
 
 # This small test directory intentionally discovers new .cpp files automatically.

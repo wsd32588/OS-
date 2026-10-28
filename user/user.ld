@@ -1,34 +1,44 @@
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 PHDRS {
-    image PT_LOAD FLAGS(5);
+    code PT_LOAD FLAGS(5); /*PT_LOAD 数据可加载段*/
+    data PT_LOAD FLAGS(6);
 }
 SECTIONS {
-    . = 0x40000000;
-    __user_image_start = .;
+    . = 0x40000000; /*代码和只读常量*/
+    __user_code_start = .;
     .text : {
         KEEP(*(.text.entry))
         *(.text .text.*)
-    } : image
+    } :code
     .rodata : {
         *(.rodata .rodata.* .srodata .srodata.*)
-    } : image
-    __user_image_end = .;
+    } :code
+    __user_code_end = .;
+
+    . = 0x40003000;
+    __user_data_start = .;
     .data : {
         *(.data .data.* .sdata .sdata.*)
-        *(.got .got.* .igot .igot.*)
-        *(.tdata .tdata.*)
-        *(.init_array .init_array.* .fini_array .fini_array.*)
-    } : image
+    } :data
+    __user_data_end = .;
     .bss (NOLOAD) : {
-        *(.bss .bss.* .sbss .sbss.* .tbss .tbss.*)
+        __user_bss_start = .;
+        *(.bss .bss.* .sbss .sbss.*)
         *(COMMON)
-    } : image
+        __user_bss_end = .;
+    } :data
+
+    .unsupported : {
+        *(.got .got.* .igot .igot.* .tdata .tdata.* .tbss .tbss.*)
+        *(.init_array .init_array.* .fini_array .fini_array.*)
+    } :data
     /DISCARD/ : {
         *(.eh_frame .eh_frame.* .comment .note.*)
     }
 
-    ASSERT(_start == 0x40000000, "user entry must be at image start")
-    ASSERT(__user_image_end - __user_image_start <= 4096, "user image exceeds one page")
-    ASSERT(SIZEOF(.data) == 0 && SIZEOF(.bss) == 0, "writeable globals are not supported yet")
+    ASSERT(_start == 0x40000000, "user entry must be at code start")
+    ASSERT(__user_code_end - __user_code_start <= 4096, "user code exceeds one page")
+    ASSERT(__user_bss_end - __user_data_start <= 4096, "user data and BSS exceed one page")
+    ASSERT(SIZEOF(.unsupported) == 0, "unsupported user runtime sections")
 }

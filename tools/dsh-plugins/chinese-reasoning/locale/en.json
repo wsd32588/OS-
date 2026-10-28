@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Chinese reasoning",
+    "description": "Makes every agent write its internal reasoning in Simplified Chinese; final answers still follow the user's language."
+  }
+}

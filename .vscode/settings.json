@@ -2,5 +2,23 @@
     "C_Cpp.intelliSenseEngine": "disabled",
     "files.associations": {
         "*.h": "c"
-    }
+    },
+    "cmake.sourceDirectory": "/home/asus/tinyos/test",
+    "rust-analyzer.linkedProjects": [
+        "experiments/rcore-learning/os/Cargo.toml",
+        "experiments/rcore-learning/user/Cargo.toml"
+    ],
+    "rust-analyzer.cargo.target": "riscv64gc-unknown-none-elf",
+    "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.diagnostics.enable": true,
+    "rust-analyzer.check.extraArgs": ["--locked"],
+    "rust-analyzer.cargo.extraEnv": {
+        "CARGO_HOME": "/home/asus/tinyos/experiments/rcore-learning/.cache/cargo",
+        "CARGO_NET_OFFLINE": "true",
+        "RUSTC": "/home/asus/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc"
+    },
+    "rust-analyzer.cargo.sysrootSrc": "/home/asus/tinyos/experiments/rcore-learning/.cache/ide-rust-src/rust-src-1.98.1/rust-src/lib/rustlib/src/rust/library",
+    "editor.cursorSmoothCaretAnimation": "on"
 }

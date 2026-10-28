@@ -6,7 +6,7 @@
 运行 `make test`。需要 CMake 3.20+ 和支持 C++20 的 Linux/WSL 宿主编译器，
 可用 `HOST_CC`、`HOST_CXX` 指定。根 Makefile 只转交配置、构建和 CTest 运行；
 测试的构建规则集中在 `test/CMakeLists.txt`。
-测试由 C++ 编译；实际 `kernel/pmm.c`、`kernel/vm.c`、`kernel/user_memory.c`、`kernel/user_access.c`
+测试由 C++ 编译；实际 `kernel/mm/pmm.c`、`kernel/mm/vm.c`、`kernel/mm/user_memory.c`、`kernel/mm/user_access.c`、`kernel/user/user_image.c`
 仍由宿主 C 编译器分别编译，再通过 `c_api.hpp` 的 C 链接接口调用。
 宿主构建产物保存在 `test/build/cmake/`，与 RISC-V 内核对象分开。
 
@@ -36,6 +36,7 @@ CMake 导出宿主 `test/build/cmake/compile_commands.json`。
 - `user_memory_fixture.hpp` 集中准备页池、根页表、实际拥有的代码/栈页和映射，并提供资源释放检查。
 - `test_user_memory.cpp` 覆盖 H1 正常释放、H2 重复释放及初始空描述释放、H3 代码/栈各自 PA 不符或缺 U、H4 栈页释放失败后的重试、H5 手动解除叶映射后的释放、H6 非法参数、H7 保留其他映射，以及 H8 两处 flush 失败后的重试。
 - `test_user_access.cpp` 集中运行 12 个用户内存复制场景：带偏移/NUL 的单页、虚拟连续而物理分隔的跨页、第二页缺映射/U/R、起点缺映射、NULL、零长度、溢出、起点/末字节非 canonical，以及 UINTPTR_MAX 处的单字节。检查源数据、页表、映射、页数、调用记录和目标哨兵，失败允许合法前缀；完整范围见 [USER_ACCESS_REQUIREMENTS.md](USER_ACCESS_REQUIREMENTS.md)。
+- `test_user_image.cpp` 用表驱动运行 S1-S10 共 16 个 `user_image_load_segment` 场景：初值加零尾部、恰好填满、纯 BSS、合法空段、文件比内存长、容量不足、三种镜像越界、SIZE_MAX 极端参数、两类 NULL 指针和零长度非法偏移。`Scenario` 每行给出镜像、目标偏移与容量、三个长度和期望结果，`run_scenario` 自动用 0xcc 哨兵准备缓冲区，成功时比较整个目标与源镜像，失败时要求目标与镜像逐字节不变；完整范围见 [USER_SEGMENT_REQUIREMENTS.md](USER_SEGMENT_REQUIREMENTS.md)。
 
 H1 检查两处映射消失、四页归还、描述全空、根页表没有被 free，
 以及 unmap/flush/free 的顺序。H2 使用公共模板比较返回值及完整状态快照：
@@ -115,6 +116,6 @@ WRITE 脚本尚未加入 make test-qemu，完整回归需要另行执行上述�
 
 独立 C 用户程序已验收，构建和使用范围见
 [USER_PROGRAM_REQUIREMENTS.md](USER_PROGRAM_REQUIREMENTS.md)。基线使用
-user/main.c 独立链接的镜像，经 objcopy 和 kernel/user_entry.S 的 incbin 嵌入内核。
+user/main.c 独立链接的镜像，经 objcopy 和 kernel/user/user_entry.S 的 incbin 嵌入内核。
 三个 QEMU 脚本均复制 user 源码并忽略 build，临时工程从源码重建镜像。
 2026-10-07 完整 12 个 WRITE 场景与宿主回归通过；旧 Q1/Q2 由作者报告通过。

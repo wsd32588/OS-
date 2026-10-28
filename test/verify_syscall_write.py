@@ -2,7 +2,7 @@
 """QEMU verification for the WRITE syscall, one scenario at a time.
 
 A single temporary workspace is built once and reused.  Later scenarios only
-overwrite kernel/user_entry.S, so make does an incremental rebuild.
+overwrite kernel/user/user_entry.S, so make does an incremental rebuild.
 """
 
 from pathlib import Path
@@ -24,7 +24,7 @@ FORBIDDEN_MARKERS = (
     b"kernel halt",
 )
 
-USER_IMAGE_TEMPLATE = """#include "syscall.h"
+USER_IMAGE_TEMPLATE = """#include "task/syscall.h"
 
 .section .rodata.user_image, "a", @progbits
 .balign 4
@@ -85,7 +85,7 @@ user_image_end:
 
 
 def copy_project(destination: Path) -> None:
-    for name in ("include", "kernel", "drivers", "user"):
+    for name in ("include", "kernel", "drivers", "user", "lib"):
         shutil.copytree(
             REPO / name,
             destination / name,
@@ -166,7 +166,7 @@ def run_generated(workspace: Path, scenario: dict) -> None:
         expected_return=scenario["expected_return"],
         data=scenario.get("data", ""),
     )
-    (workspace / "kernel" / "user_entry.S").write_text(image)
+    (workspace / "kernel" / "user" / "user_entry.S").write_text(image)
     build(workspace)
     output = run_qemu(workspace)
 
@@ -361,14 +361,14 @@ SCENARIOS = [
 
 
 def prepare_main(workspace: Path, scenario: dict) -> None:
-    source = (REPO / "kernel" / "main.c").read_text()
+    source = (REPO / "kernel" / "boot" / "main.c").read_text()
 
     for old, new in scenario.get("main_replacements", []):
         if source.count(old) != 1:
             raise SystemExit("main.c replacement anchor is not unique")
         source = source.replace(old, new, 1)
 
-    (workspace / "kernel" / "main.c").write_text(source)
+    (workspace / "kernel" / "boot" / "main.c").write_text(source)
 
 def main() -> None:
     requested = set(sys.argv[1:])

@@ -2,7 +2,7 @@
 #define TINYOS_KERNEL_TEST_H
 #include <stdint.h>
 
-#include "uart.h"
+#include "drivers/uart.h"
 
 #define QEMU_TEST_DEV  0x100000UL
 #define QEMU_EXIT_PASS 0x5555

@@ -540,6 +540,8 @@ void test_release_preserves_other_mapping() {
 
     fixture.expect_released();
 }
+
+
 }
 
 int test_user_memory(void) {

@@ -50,14 +50,18 @@ private:
 public:
     static constexpr uint64_t code_address = UINT64_C(0x00400000);
     static constexpr uint64_t stack_address = code_address + SV39_PAGE_SIZE;
+    static constexpr uint64_t data_address = stack_address + 2 * SV39_PAGE_SIZE;
     static constexpr uint64_t code_flags = SV39_PTE_U | SV39_PTE_R | SV39_PTE_X | SV39_PTE_A;
     static constexpr uint64_t stack_flags = SV39_PTE_U | SV39_PTE_R | SV39_PTE_W | SV39_PTE_A | SV39_PTE_D;
-
+    static constexpr uint64_t data_falgs = SV39_PTE_U | SV39_PTE_R | SV39_PTE_W | SV39_PTE_A | SV39_PTE_D;
     Sv39PageTable *root = nullptr;
     unsigned long pages_after_root = 0;
     UserMemory memory{};
+    bool with_data_ = false;
 
-    UserMemoryFixture() {
+
+    explicit UserMemoryFixture(bool with_data = false) {
+        with_data_ = with_data;
         root = sv39_create_page_table();
         require(root != nullptr, "allocate borrowed root page table");
         pages_after_root = pmm_available_pages();
@@ -69,13 +73,25 @@ public:
         memory.code_address = code_address;
         memory.stack_address = stack_address;
 
+        if (with_data != false) {
+            memory.data_page = pmm_alloc_page();
+            memory.data_address = data_address;
+
+            require_equal(sv39_map_page(memory.root, memory.data_address,
+                reinterpret_cast<uintptr_t>(memory.data_page),
+                SV39_PTE_U | SV39_PTE_R | SV39_PTE_W | SV39_PTE_A | SV39_PTE_D),
+                SV39_OK, "map owned page");
+            expect_mapping(memory.data_address, memory.data_page,
+                data_falgs
+            );
+        }
         require_equal(sv39_map_page(root, code_address,
             reinterpret_cast<uintptr_t>(memory.code_page), code_flags),
             SV39_OK, "map owned code page");
         require_equal(sv39_map_page(root, stack_address,
             reinterpret_cast<uintptr_t>(memory.stack_page), stack_flags),
             SV39_OK, "map owned stack page");
-        require_equal(pmm_available_pages(), pages_after_root - 4,
+        require_equal(pmm_available_pages(), pages_after_root - (with_data ? 5 : 4),
                       "code, stack, L0 and L1 consume four pages");
         expect_mapping(code_address, memory.code_page, code_flags);
         expect_mapping(stack_address, memory.stack_page, stack_flags);
@@ -90,6 +106,10 @@ public:
                       SV39_ERR_NOT_MAPPED, "released code mapping is absent");
         require_equal(query_mapping(root, stack_address).result,
                       SV39_ERR_NOT_MAPPED, "released stack mapping is absent");
+        if (with_data_) {
+            require_equal(query_mapping(root, data_address).result,
+                          SV39_ERR_NOT_MAPPED, "released data mapping is absent");
+        }
         require_equal(pmm_available_pages(), pages_after_root, "owned pages restored");
         require_equal(snapshot().memory, MemoryDescriptor{}, "descriptor is empty");
         require_equal(root->entries[sv39_vpn_index(code_address, 2)],
