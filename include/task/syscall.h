@@ -11,9 +11,17 @@
 #ifndef __ASSEMBLER__
 struct trap_frame;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct trap_frame* syscall_handle(
     struct trap_frame *frame
 );
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __ASSEMBLER__ */
 

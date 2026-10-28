@@ -4,7 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "mm/pmm.h"
 #include "mm/vm.h"
 #include "mm/user_memory.h"
 #include "user/user_elf.h"
@@ -22,6 +21,10 @@
     (DEMO_USER_DATA_ADDRESS - DEMO_USER_CODE_ADDRESS)
 
 /* Boot-private stages shared between main.c and the private stage files. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int map_identity_range(
     Sv39PageTable *root,
     uintptr_t start,
@@ -55,5 +58,9 @@ void boot_start_user(
     size_t elf_size,
     const UserElfLayout *layout);
 void boot_start_scheduler(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -18,8 +18,8 @@ get_filename_component(TINYOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLU
 add_library(tinyos_test_kernel STATIC
     "${TINYOS_SOURCE_DIR}/kernel/mm/pmm.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/vm.cpp"
-    "${TINYOS_SOURCE_DIR}/kernel/mm/user_memory.c"
-    "${TINYOS_SOURCE_DIR}/kernel/mm/user_access.c"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/user_memory.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/user_access.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/user/user_image.cpp"
 )
 set_target_properties(tinyos_test_kernel PROPERTIES

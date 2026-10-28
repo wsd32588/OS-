@@ -50,9 +50,9 @@ OBJS = \
     kernel/boot/main.o \
     kernel/boot/private/kernel_vm.o \
     kernel/boot/private/demo_tasks.o \
-    kernel/boot/private/user_prepare.o \
     kernel/boot/private/boot_stages.o \
     kernel/mm/pmm.o \
+	kernel/mm/user_loader.o \
     kernel/arch/riscv/trap_entry.o \
     kernel/task/trap.o \
     kernel/arch/riscv/sbi.o \

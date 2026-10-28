@@ -19,7 +19,7 @@ rCore用于补充具体概念，不自动进入第五章；最新状态以学习
 | --- | --- |
 | [USER_ELF_LEARNING.md](USER_ELF_LEARNING.md) | **ELF统一复习入口**：当前全路径、概念问答、作者原答与修正；旧解析资料折叠保留 |
 | [USER_ELF_LOADING.md](USER_ELF_LOADING.md) | 已完成的受限ELF装载任务与验收历史；日常复习看上一份总结即可 |
-| [TINYOS_EVOLUTION.md](TINYOS_EVOLUTION.md) | 当前用户内存层迁移任务、已验证的地址/VPN/PTE实现及后续规划 |
+| [TINYOS_EVOLUTION.md](TINYOS_EVOLUTION.md) | 当前受限ELF装载模块边界任务、已完成的内存C++迁移与问答及后续规划 |
 | [CPP_STANDARD_LIBRARY.md](CPP_STANDARD_LIBRARY.md) | C++标准库基础支持接入：目标组件、工具链约束、验收与后续实际结果 |
 
 rCore子项目的成功不会自动修复TinyOS主线。两套实现与验证记录分别保留。

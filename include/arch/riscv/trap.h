@@ -54,13 +54,19 @@ struct trap_frame {
     u64 reserved;
 };
 
+#ifdef __cplusplus
+#define TRAP_FRAME_STATIC_ASSERT static_assert
+#else
+#define TRAP_FRAME_STATIC_ASSERT _Static_assert
+#endif
+
 #define TRAP_FRAME_ASSERT_OFFSET(member, expected) \
-    _Static_assert( \
+    TRAP_FRAME_STATIC_ASSERT( \
         offsetof(struct trap_frame, member) == (expected), \
         "trap_frame." #member " offset must match trap_entry.S" \
     )
 
-_Static_assert(
+TRAP_FRAME_STATIC_ASSERT(
     sizeof(struct trap_frame) == TRAP_FRAME_SIZE,
     "trap_frame size must match trap_entry.S"
 );
@@ -110,8 +116,17 @@ TRAP_FRAME_ASSERT_OFFSET(stval, TRAP_FRAME_STVAL_OFFSET);
 TRAP_FRAME_ASSERT_OFFSET(reserved, TRAP_FRAME_RESERVED_OFFSET);
 
 #undef TRAP_FRAME_ASSERT_OFFSET
+#undef TRAP_FRAME_STATIC_ASSERT
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 void trap_init(void);
 struct trap_frame *trap_handler(struct trap_frame *frame);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

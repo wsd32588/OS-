@@ -5,6 +5,10 @@
 
 #include "mm/vm.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int sv39_activate(const Sv39PageTable* root);
 uint64_t sv39_read_satp(void);
 
@@ -13,5 +17,7 @@ uint64_t sv39_read_satp(void);
  * 地址必须是 canonical 且按页对齐。
  */
 int sv39_flush_page(uint64_t virtual_address);
-
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -250,3 +250,31 @@ class PageNum {
 
 using PhysPageNum = PageNum<PhysicalTag>;
 using VirtPageNum = PageNum<VirtualTag>;
+
+struct PageRange {
+    VirtPageNum start;
+    VirtPageNum end; // 左闭右开 [start, end)
+
+    [[nodiscard]] constexpr bool overlaps_with(const PageRange& other) const noexcept {
+        return (start.val() < other.end.val()) && (other.start.val() < end.val());
+    }
+};
+
+// 检验 ELF 的所有段或多个内存映射区间是否互不重叠
+template <size_t N>
+constexpr bool validate_no_overlap(const PageRange (&ranges)[N]) noexcept {
+    for (size_t i = 0; i < N; ++i) {
+        // 先确保区间自身合法
+        if (ranges[i].start.val() >= ranges[i].end.val()){
+            return false;
+        }
+
+        // 两两比对
+        for (size_t j = i + 1; j < N; ++j) {
+            if (ranges[i].overlaps_with(ranges[j])) {
+                return false; // 发现区间重叠
+            }
+        }
+    }
+    return true;
+}

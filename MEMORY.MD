@@ -1,6 +1,41 @@
 # TinyOS 项目记忆
 
-最后更新：2026-10-28
+最后更新：2026-10-29
+
+## Git进度保存前复核（2026-10-29）
+
+作者要求提交并推送当前进度，boot_stages/boot_private后续自己接线。现已修正loader的合法性方向、空镜像/段数/checked页尾栈顶，PageRange比较改.val()，Makefile续行和target对象项、宿主CMake移除loader均已修正。make实测新loader和其他修改对象编译成功，最终链接仅因boot_start_user仍调用旧prepare_demo_user_memory失败；作为未完成接线的进度保存，不把它标成可启动版本，也不代改boot。make test和git fsck通过；暂存diff检查只报三个cpp中的既有行尾空白，未顺带格式化。未运行QEMU，日志.cache/git-checkpoint-2026-10-29/。
+
+## 新loader当前审查（2026-10-29）
+
+作者本轮明确只检查已修改文件，boot_private/启动接线留待作者之后处理，本轮不代改、不要求完成。新loader输入/输出地址混用及头文件两处整理已修，C转发/span/输出引用/root取址/外部map与unmap正确，目标单文件语法检查通过。
+集中问题：loader23–28行canonical和页对齐谓词缺!导致合法配置被拒，VA应使用VirtAddr；core仍缺empty/段数/checked页尾及栈顶；新PageRange模板268行用未提供的PageNum >=，实际实例化才报错，非包含头即报错，可比较.val()，未强求接入loader的现有单页重叠检查。Makefile已换新对象但55行缺续行反斜杠，make -n实测missing separator；宿主CMake错加kernel/user/user_loader.cpp导致配置失败，应移除该目标专用源而非改为mm路径（含fence.i）。独立只读审查一致，未改正式实现/运行QEMU；文档只更新当前状态。
+
+## 下一批任务已交付：受限ELF装载归入内存模块（2026-10-28）
+
+作者说开始下一步，按学习约定仅交付完整任务到TINYOS_EVOLUTION.md，不代写实现。user_prepare.cpp移到kernel/mm/user_loader.cpp；新增user_loader.h的UserMemoryLayout三VA配置/C入口user_memory_load_elf，以及.hpp的tinyos::load_user_elf(root&,span<const unsigned char>,elf布局&,配置&,输出&)；boot构造DEMO配置并直接调新C入口，移除旧私有prepare声明，Makefile替换对象。MM不再依赖boot私有头/DEMO宏；fence.i仍targetonly，不加入宿主源。
+配置检查在分配前：三页非0/canonical/4KiB对齐/两两不同，页内最后字节及栈顶checked运算；保留受限两段ELF/文件边界/入口检查。C shim构造引用/span前先判空及零长度；失败out不变，成功调用者保证out不占有旧资源。保留阶段循环/attempted与mapped/外部map与原回滚顺序、共享root和三页/五页计数，已知回滚自身失败限制不扩改。
+P0由协作者承担原构建宿主+默认QEMU、一条无效配置无状态变化、第二合法栈布局0x40005000顶0x40006000的实际运行/回收。配置不做ELF重定位，第二布局只改栈；boot必须用当前配置计算实际SP，不能继续传旧栈顶。独立只读设计审查确认。仅更新文档和索引，未改功能/运行新验证；完整实现继续由作者主导。
+
+## 剩余C接口兼容性收尾（2026-10-28）
+
+作者授权继续改剩余接口。已给SBI/trap/sched/syscall/timer/UART/ELF解析及user_api的C函数补条件式extern C；trap.h静态断言分C11/C++语法，user_api的_Noreturn分C++ [[noreturn]]，syscall仍保护汇编包含。仅声明兼容性，不迁移实现/改参数/做模块重构。
+make与make test均0无警告；16个C头的宿主/RISC-V C11/C++20独立严格检查64项全通过，C++实际引用26个入口均为原C符号并匹配内核/用户ELF导出，最终内核无未解析。原两处C++语法拒绝已复现；首次探针漏freestanding及空翻译单元导致的失败仅修探针配置。证据.cache/c-interface-review-w3msuci7/；独立只读审查通过，未重复QEMU、未clean/stage/commit。后续才收拢内存模块职责和装载位置，不把补C链接当作模块化完成。
+
+## 用户内存层迁移与重复页操作简化已通过（2026-10-28）
+
+本批三题原答/审查/修正版已统一归档TINYOS_EVOLUTION.md：attempted失败也可能创建中间表，mapped才允许删除本次叶映射；逐页清成员防重复free，保留剩余归属/root/VA供重新进入流程重试，提前清对象会泄漏；span只描述当前可访问连续元素范围，不要求物理连续，也不负责翻译/权限/生命周期，用户VA须范围及逐页V/R/U检查。作者第三答把VA视为无用数字，已说明其在正确地址空间和权限下能作为指针，强转不会建立这些条件。理解收尾完成，下一批按已说明的内存模块边界收拢，不自动改功能或铺框架。
+
+作者已实现user_access.hpp类型化核心和prepare.cpp，后明确授权协作者简化重复page操作。已将prepare分配/加载/map/flush/回滚改为局部PreparedPage数组+分阶段循环，attempted/mapped分开；rollback_order保留原栈/代码/数据，free保留代码/栈/数据。release用span<PageReference>绑定真实成员void**，成功free立即清成员，保留原错误码/重试。access去重复canonical和多余指针转换，仍检查V/R/U、length-1范围与跨页前缀。boot_private.h补C保护，vm_arch保护覆盖全部C函数，prepare外部map注入入口保留。
+make -B和make test verbose均0无警告；一次QEMU正常yield/R/sleep/XHello/Data OK/exit且退出后两次S timer，124为限时。三个C入口/最终无未解析/无init/fini核对通过。临时宿主prepare前后探针仅去fence.i，入口拒绝、部分分配失败、foreign映射冲突、flush失败和正常准备释放均通过，回滚事件轨迹一致；不把该宿主探针当架构验证。独立只读审查未发现回归。
+证据.cache/page-loop-simplify-38luo4kk/，含作者改前快照及全部日志/探针；正式历史QEMU矩阵未扩展，原prepare清理自身失败时局部归属限制仍保留。文档更新TINYOS_EVOLUTION.md，本次未clean/stage/commit。整批实现验证已完成，后续先梳理与理解题，再按作者安排收拢内存接口；不自动推进独立用户root或调度。
+
+## 用户内存循环改写审查（2026-10-28）
+
+作者已修复错误码、UserMemory标签、宿主两源路径及当前所需C链接。正式make与make test均0无警告，原部分释放/flush失败重试与其他宿主回归通过；一次timeout 8s make qemu完成yield/R/sleep/XHello/Data OK/exit，退出后两次S timer，无故障，124为限时。最终内核无未解析符号，两C入口和flush引用保持原名，两新对象无init/fini数组。证据.cache/user-memory-recheck-_i1n_ftf/含日志、源哈希及结果；正式实现未代改、未提交。当前release迁移可通过，整批剩user_access.hpp的类型化复制入口及user_prepare工厂迁移；vm_arch其余两个C函数尚在保护块外，本轮C++未调用，不算现有链接失败。
+
+上一轮审查时作者已将user_memory/access改.cpp，release按阶段循环，成功free后清实际成员，C转发memory->release正确；阶段顺序与重试归属未见回归。当时发现的待修项为：free失败保持SV39_ERR_PAGE_FREE_FAILED；vm_arch.h/user_access.h补C链接保护；宿主CMake两源后缀改.cpp；UserMemory加struct标签以消除目标Clang警告。当前均按本节开头记录复验。
+实际make -B链接失败于user_copy_from和sv39_flush_page，make test配置失败于旧.c路径。仅在.cache/user-memory-loop-review-zrpqzc5_临时副本补接线/标签后，H4复现actual=-1 expected=-7；再仅恢复原错误码后全部宿主通过。正式实现未代改，未运行QEMU，不视为整批完成；user_access.hpp及准备工厂迁移仍按原任务后续完成。
 
 ## 下一批已准备：用户内存层C++迁移（2026-10-28）
 

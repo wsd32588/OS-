@@ -6,6 +6,10 @@
 
 struct trap_frame;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void sched_init(void);
 int task_create(void (*entry)(void));
 
@@ -34,4 +38,9 @@ int task_create_user(
 );
 
 const Sv39PageTable* sched_current_user_root(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif

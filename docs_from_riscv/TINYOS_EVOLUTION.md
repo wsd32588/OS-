@@ -1,18 +1,18 @@
 # TinyOS 渐进改造草案
 
-更新：2026-10-28。地址/VPN/PTE迁移已通过；下一批整理用户内存准备、安全访问和释放，任务已准备，尚未改其源码。
+更新：2026-10-28。用户内存迁移和C接口兼容已通过；当前任务为将受限ELF装载移入内存模块，并由启动层显式提供布局配置。
 
 标准库接入单独记录在 [CPP_STANDARD_LIBRARY.md](CPP_STANDARD_LIBRARY.md)。本文继续维护地址/页表设计、实现问题和学习记录，不重复维护库选型与工具链接线。
 作者确定本轮rCore完成第四章后先回TinyOS，以实际功能实现和作者亲手设计测试为主，
 遇到理解缺口再回rCore补充；不要求先完成全教程，不自动进入第五章。
 当前rCore B22功能与最后问答已完成，第四章本轮收尾，TinyOS主线恢复。
-ELF当前状态与原答/修正统一见[ELF学习总结](USER_ELF_LEARNING.md)。本文件集中保留当前用户内存层任务、已完成C++改造及后续方向，不另建零散任务文档。
+ELF当前状态与原答/修正统一见[ELF学习总结](USER_ELF_LEARNING.md)。本文件集中保留当前内存模块边界任务、已完成C++改造及后续方向，不另建零散任务文档。
 
 ## 方向与本轮范围
 
 作者希望利用 rCore 学习所得，逐步收尾 TinyOS 的临时代码，同时边实现边制定
 C++ 改造计划，避免等规模扩大后集中重构。延续既有的 C++ 主体方向，按模块推进。
-只把当前用户内存层细化为本批任务，较远阶段保留建议，不作为同时开展的作业。
+只把紧接的受限ELF装载边界整理细化为本批任务，较远阶段保留建议，不作为同时开展的作业。
 
 rCore 当前的可借鉴进展集中在地址类型、页帧所有权、MemorySet 与 ELF 用户空间构造。
 截至2026-10-25，BATCH18共享跳板、BATCH19单ELF分页U-mode执行和BATCH20分页write/用户恢复已通过。
@@ -22,9 +22,164 @@ TinyOS 的 sleep、用户内存安全复制、部分释放重试和失败回滚�
 
 恢复后由作者主导完整功能与有学习价值的测试，协作者先帮助明确问题、接口、核心不变量和可观察结果，
 再解释、审查、定位问题并承担例行复验，不默认交付大框架只留几个TODO。
-下面已完成部分用于复习，当前用户内存层按本节推进，较远阶段仍是建议，不自动开展。
+下面先给出当前完整任务，已完成部分用于复习，较远阶段仍是建议，不自动开展。
 
-## 当前一批：用户内存准备、访问和释放
+## 当前一批：将受限ELF装载归入内存模块
+
+### 作者当前实现审查（2026-10-29）
+
+提交前最新复核：下面初审发现的合法性方向、核心empty/段数/checked页尾和栈顶、PageRange比较及Makefile/CMake配置问题均已修正。make实际编译新loader成功，最终链接在boot_start_user仍调用旧prepare_demo_user_memory处失败；启动接线由作者留待之后完成，本次按在制进度提交。make test通过，未运行QEMU；日志.cache/git-checkpoint-2026-10-29/。以下保留初审说明供对照，不再作为这些项目仍未修复的结论。
+
+作者明确本轮先检查已修改文件，boot_private和启动侧接线之后自己处理，本轮不要求完成。输入/输出地址混用、头文件包含和标签拼写已修；C shim只读span构造、image.data()、输出引用赋值、root取址及外部map/unmap已正确，新核心单文件目标语法检查通过。
+
+当前集中修正：loader23–28行的canonical和对齐检查缺!，合法配置被当成错误，VA应使用VirtAddr；核心入口仍需补empty、段数和checked页尾/栈顶。新增PageRange模板268行用了PageNum未提供的>=，实际实例化已复现错误，可比较.val()；它尚未接入loader，现有单页地址相等检查无需强制与模板同时使用。Makefile55行新对象末尾缺续行反斜杠，make -n实际missing separator；宿主CMake24行误加不存在的kernel/user/user_loader.cpp，应移除此target-only源（含fence.i），而非改成mm路径。
+
+独立只读审查一致；本轮未改正式功能、未执行QEMU或重复旧测试，不把未完成的boot接线算作本轮已修改文件的问题。
+
+### 目标与可观察结果
+
+由作者整批实现，将启动演示的地址选择与实际装载操作分开。启动层提供镜像、已解析的ELF元数据和三页布局；内存模块完成校验、分配、复制、映射、刷新和失败清理，成功后交出UserMemory。当前共享root、受限两段ELF、三张内容页和两张中间表继续作为运行基线。
+
+默认运行仍输出Hello与Data OK并正常退出用户任务；另外可以仅改变用户栈位置，不修改装载算法，用户仍正常执行。配置不负责重定位固定VA的ELF：代码/数据地址必须与ELF段和入口匹配，不能只改配置就搬动程序。
+
+### 文件范围与职责
+
+| 文件 | 本批修改 |
+| --- | --- |
+| kernel/boot/private/user_prepare.cpp → kernel/mm/user_loader.cpp | 搬移原装载主体，替换DEMO常量为显式配置，提供C++核心及薄C入口 |
+| include/mm/user_loader.h（新增） | 声明三页布局配置和提供给C启动层的入口，包含所需C兼容类型 |
+| include/mm/user_loader.hpp（新增） | 声明实际可复用的C++装载入口，引用页表/元数据/输出并以span描述镜像 |
+| kernel/boot/private/boot_stages.c | 包含公开装载头，以现有DEMO常量构造配置，调用新C入口，按同一配置计算用户SP |
+| kernel/boot/private/boot_private.h | 移除旧prepare_demo_user_memory声明；DEMO地址策略继续留在启动侧 |
+| Makefile | 对象项由kernel/boot/private/user_prepare.o替换为kernel/mm/user_loader.o |
+
+准备函数仍包含fence.i，只进入目标构建，本批不加入宿主CMake源列表。已有UserMemory七字段及显式转移、调度/trap/syscall实现、地址页表/PMM接口和用户链接脚本不改。新内存模块不包含boot_private.h，不引用DEMO_USER_*，不在boot中留下纯转发的旧prepare兼容函数。
+
+### 两个公开入口
+
+user_loader.h中，类型声明放在extern C块之外，函数声明放在条件式extern C块之内：
+
+```c
+typedef struct UserMemoryLayout {
+    uintptr_t code_address;
+    uintptr_t stack_address;
+    uintptr_t data_address;
+} UserMemoryLayout;
+
+int user_memory_load_elf(
+    Sv39PageTable* root,
+    const void* image,
+    size_t image_size,
+    const UserElfLayout* elf_layout,
+    const UserMemoryLayout* memory_layout,
+    UserMemory* memory_out
+);
+```
+
+头文件包含stddef.h、stdint.h、mm/user_memory.h和user/user_elf.h。user_loader.hpp包含该C头及span，声明：
+
+```cpp
+namespace tinyos {
+int load_user_elf(
+    Sv39PageTable& root,
+    std::span<const unsigned char> image,
+    const UserElfLayout& elf_layout,
+    const UserMemoryLayout& memory_layout,
+    UserMemory& memory_out
+);
+}
+```
+
+C入口先拒绝root/image/elf_layout/memory_layout/memory_out中的空指针及零镜像长度，再构造引用和span并转发。C++核心检查空镜像和布局，不在接口内部保存调用者的span或元数据引用。核心可用VirtAddr做checked地址运算；无需为配置另造一组地址类或管理类。
+
+### 分配前完成的校验
+
+1. 三个配置页起点均非0、符合Sv39 canonical、按4KiB对齐，且两两不同。用checked加法确认每张页的最后一个字节合法；栈起点加PAGE_SIZE得到的栈顶也须无溢出且canonical。对齐后栈顶自然符合现有16字节调用约定。
+2. 沿用两LOAD限制与原有大小/文件范围/权限检查。按配置的code_address和data_address查找相应段，拒绝重复/未知段，继续要求代码段flags=5、数据段flags=6；段开始地址必须可表示为有效VA，不能先截断再比较。
+3. 入口必须为2字节对齐，并处于代码段实际file_size覆盖范围；仍用先比较下界再相减的方式，避免不受控加法溢出。
+
+这些检查都应在第一次pmm_alloc_page前结束。root是否已有映射仍由现有map返回冲突处理，不提前覆盖，不把布局检查改为“目标必须已有映射”。不增加对输出哨兵值的全零要求：失败继续保留原输出，成功调用的前置条件是输出不拥有尚未释放的资源，避免覆盖泄漏。
+
+### 装载流程与资源边界
+
+直接复用已完成的PreparedPage数组与阶段循环，字段中的VA改来自memory_layout。分配、复制、map、flush和提交的相对顺序保持；栈没有ELF文件内容，继续使用PMM提供的清零页。保留外部sv39_map_page、sv39_unmap_page、pmm_free_page等注入边界。
+
+mapping_attempted和mapped继续分开；回滚unmap/flush/reclaim保持原栈→代码→数据次序，free仍为代码→栈→数据。只解除本次成功建立的叶映射，不破坏原有映射。成功后才一次性写memory_out，root继续借用，三张内容页交给描述管理。
+
+在boot_start_user中使用局部C配置，初值仍取当前三个DEMO地址。load成功后，将同一memory_layout.stack_address + SV39_PAGE_SIZE作为task_create_user的用户栈顶；不要配置已经换了栈，启动时还传另一个旧常量。这里的加法依赖装载成功已完成的checked验证。镜像起点、elf_size、layout->entry_address、任务成功后清空源描述和任务创建失败后的善后保持。
+
+本批不合并prepare回滚与UserMemory::release为一套新析构框架。两者拥有不同的提交状态，已有prepare清理自身也失败时的局部归属限制继续保留，不扩大重设计。也不增加内核堆、动态容器、多页ELF段、ELF重定位、独立root或调度机制。
+
+### P0验证与交付
+
+作者完整实现后集中检查，以下必要验证由协作者承担：
+
+- make -B、make test通过，原C启动方正确链接；MM实现没有boot私有头/DEMO宏依赖，目标新对象进入最终链接，旧对象不再作为依赖。
+- 一次默认QEMU完成yield、sleep、Hello、Data OK、exit，退出后A及至少两次S timer继续；默认成功装载消耗三张内容页加两张中间表，退出回收到原有基线。
+- 一条无效配置（例如stack_address与code_address相同）在分配前拒绝，PMM页数、根分支、原映射和输出描述不变。
+- 临时仅改栈地址为0x40005000，顶为0x40006000，保留原ELF代码/数据VA；检查旧栈位置无映射、新栈页权限与清零正确、实际用户SP采用新值，并正常退出回收。这是配置与执行路径验证，不要求作者另写测试矩阵。
+- 原copy/release的权限/范围/部分失败重试宿主回归保持，C/C++声明与ABI符合前一批约定。
+
+作者可先运行make、make test、timeout 8s make qemu观察默认行为；124仍表示常驻演示被限时终止。P1可选是新的未对齐/溢出配置拒绝，P2可选是更多历史故障注入。现有verify脚本仍引用旧函数/路径/页数的部分，由协作者按当前验证需要适配，不要求保留过时接口或先修整套历史矩阵。
+
+任务交付时只更新本文；作者当前实现进度见本节开头审查，待整批完成后继续验收。完成后的功能梳理与约三题仍归档本文。
+
+## 已完成：用户内存准备、访问和释放
+
+### 剩余C接口的C++兼容性收尾（2026-10-28）
+
+作者授权继续修改剩余接口。已为SBI、trap、调度、syscall、timer、UART、ELF解析及用户汇编包装的C函数声明补条件式extern C，类型与C++模板接口留在块外；syscall声明仍在非汇编分支内。trap.h的布局断言分别使用C11 _Static_assert/C++ static_assert，user_api.h的退出声明分别使用_Noreturn/[[noreturn]]。此处只处理现有接口的语言兼容，装载逻辑位置和模块职责收拢留到下一批。
+
+构建与宿主测试通过、无警告；16个C接口头在宿主和RISC-V的C11/C++20模式下逐个严格检查，共64项通过。C++探针实际引用26个入口，全部保留原C符号并匹配内核/用户ELF导出，最终内核无未解析符号。原C和用户汇编调用参与正常重编。证据.cache/c-interface-review-w3msuci7/含改前快照、两处旧C++语法失败和最终检查；最初独立探针漏加freestanding且宏头产生空翻译单元，调整探针配置后全部通过，不修改工具链。此次未重复运行QEMU、未clean或提交。
+
+### 实现与重复操作简化（2026-10-28）
+
+作者已完成三实现改.cpp、UserMemory成员释放及tinyos::copy_readable_user类型化入口。随后明确授权协作者简化重复页操作，已在原文件完成：
+
+- prepare用局部PreparedPage数组描述代码/栈/数据页，分阶段循环完成分配、ELF内容复制、映射、flush和失败回滚。栈没有ELF段，只使用PMM清零页。mapping_attempted与mapped仍分开，正常顺序为代码/栈/数据，回滚unmap/flush/reclaim保留栈/代码/数据的原顺序，free仍为代码/栈/数据。
+- release用局部PageReference数组绑定实际成员的地址，以span选择两页或三页；各阶段分别循环，成功释放立即清空实际成员，保留失败重试和原错误码。
+- access由try_add统一检查起止地址与溢出，直接写入目标span，去掉重复canonical检查及多余指针转换；仍逐页查询并检查V/R/U。
+- boot_private.h补齐C函数保护，vm_arch.h将保护范围覆盖全部C函数；prepare映射继续经过外部sv39_map_page，原注入入口保留。
+
+正式make -B与make test verbose通过、无警告；原有复制/释放/部分失败重试测试通过。一次QEMU正常yield、sleep、Hello、Data OK、exit后仍有两次S timer，限时返回124为预期。三个C入口保持原名，最终内核无未解析符号，新对象无init/fini数组。
+
+额外在临时宿主探针中对照简化前后prepare：仅移除RISC-V fence.i指令，不改其余算法，验证入口拒绝、部分分配回滚、已有映射冲突、flush失败回滚及正常准备/释放；页数和输出描述符合预期，记录的回滚事件次序一致。架构行为以正式QEMU结果为准。证据统一在.cache/page-loop-simplify-38luo4kk/，含改前快照、探针、前后日志及主构建/宿主/QEMU记录。本次未clean、暂存或提交。
+
+### 功能梳理与三题审查（2026-10-28）
+
+当前启动层提供受限ELF与共享root，prepare验证布局后分配代码/栈/数据页、复制段内容、映射和刷新，成功后才写输出描述。调度器接管UserMemory；syscall通过C入口进入类型化复制核心，按用户页表和V/R/U权限读取数据；退出时显式release先检查归属，再unmap、flush、free和回收空表。共享root继续借用，局部页描述数组不拥有新资源，不增加动态分配。
+
+**第一题：为什么分别记录mapping_attempted和mapped？**
+
+作者原答：
+
+> 因为两个不一样，attempted是检查是否进行过map，而mapped记录是否成功，未遂和成功是两个处理逻辑
+
+审查：区分正确，还需说明失败可能留下中间页表，以及不能误删别人的映射。
+
+修正版：mapping_attempted表示已经调用map，失败时仍可能创建了中间页表，所以清理路径按尝试标记刷新并回收空表。mapped表示本次真正建立了叶映射，只有它为真才能解除这条映射。若因已有映射冲突而失败，原映射不属于本次准备，不能unmap。
+
+**第二题：为什么每释放成功一页就清对应成员，却等全部成功才清空UserMemory？**
+
+作者原答：
+
+> 释放一页后立即清空成员，如果后续失败了，那也可以直接接着之前的部分开始清理，但是如果是直接清空整个UserMemory错哪里你都不知道，到时候如果重新释放的时候会导致之前清理的没有成功释放成员，导致内存管理出现问题
+
+审查：已抓住重试需要保留进度；重试不是从某条代码继续，而是重新进入流程，通过资源状态跳过已完成部分。清空整个描述的直接后果是丢失剩余资源归属，造成泄漏。
+
+修正版：代码页free成功后立即置空code_page，后续栈页free失败时，stack_page仍保留原指针，root和各VA也保留。再次release会重新检查并执行各阶段，空页指针不会再次free，未映射结果允许继续，剩余物理页和空表可以继续回收。提前清空整个对象会丢失尚未释放的页和后续清理所需地址。
+
+**第三题：为什么目标可用span，用户源VA不能直接转成指针读取？**
+
+作者原答：
+
+> 缓冲区是一块完整的内存块，连续是span最适配的场景，而用户源va就只是一串地址，你拿到一串数字的指针似乎也没啥用
+
+审查：连续范围确实适合span，但关键是当前地址空间中的合法可访问性。用户VA也能在正确映射和权限下被解引用；强制转换只改变类型，不建立映射、不检查权限。span要求元素地址连续，不要求物理页连续，也不会自行验证地址或延长生命周期。
+
+修正版：目标是内核已经持有、大小明确且可写的缓冲区，因此用span描述其指针和长度。用户源地址来自调用者，可能非法、未映射或指向不允许读取的区域；即使VA连续，后续页的映射和权限也可能不同。必须校验范围，再逐页查询用户映射并检查V/R/U，通过当前内核可访问的物理页映射复制。本项目仍共享root，权限与范围检查依然不能省略；以后独立root时，同一VA还可能对应不同PA。span本身不分配、不翻译、不验证这些条件。
+
+本批三题已集中审查并归档。下面保留原任务与接口约定，便于对照实现；下一批按既定方向收拢内存模块职责和对外接口。
 
 ### 目标与文件范围
 

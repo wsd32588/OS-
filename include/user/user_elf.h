@@ -27,6 +27,14 @@ typedef struct {
     UserElfSegment segments[USER_ELF_MAX_LOAD_SEGMENTS];
 } UserElfLayout; //考虑到对齐是120 bytes
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int user_elf_parse (const void* image, size_t image_size, UserElfLayout* layout);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
