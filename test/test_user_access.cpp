@@ -72,7 +72,7 @@ void expect_guards(const std::array<unsigned char, 6> &buffer) {
 void test_begin_not_zero() {
     UserMemoryFixture fixture;
     auto* source =
-        static_cast<unsigned char*>(fixture.memory.code_page);
+        static_cast<unsigned char*>(fixture.memory.pages[0].physical_page);
 
     constexpr std::size_t offset = 17;
     const std::array<unsigned char,4> expected {
@@ -85,7 +85,7 @@ void test_begin_not_zero() {
 
     std::array<unsigned char, SV39_PAGE_SIZE> code_page_backup{};
     std::memcpy(code_page_backup.data(), source, SV39_PAGE_SIZE);
-    const auto stack_backup = capture_page(fixture.memory.stack_page);
+    const auto stack_backup = capture_page(fixture.memory.pages[1].physical_page);
 
     std::array<unsigned char, 6> buffer{};
     buffer.fill(0xcc);
@@ -114,7 +114,7 @@ void test_begin_not_zero() {
 
     const int page_diff = std::memcmp(source, code_page_backup.data(), SV39_PAGE_SIZE);
     require_equal(page_diff, 0, "source code page unmodified after copy");
-    require_equal(capture_page(fixture.memory.stack_page), stack_backup,
+    require_equal(capture_page(fixture.memory.pages[1].physical_page), stack_backup,
                   "other source page unchanged");
 }
 

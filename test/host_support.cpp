@@ -72,27 +72,41 @@ Mapping query_mapping(const Sv39PageTable *root, uint64_t address) {
 }
 
 MemoryDescriptor describe(const UserMemory &memory) {
-    return {memory.root, memory.code_page, memory.stack_page, memory.data_page,
-            memory.code_address, memory.stack_address, memory.data_address};
+    MemoryDescriptor result{};
+    result.root = memory.root;
+    result.page_count = memory.page_count;
+    // Snapshot the entire bounded descriptor, including any unused tail.
+    for (std::size_t i = 0; i < result.pages.size(); ++i) {
+        result.pages[i] = {memory.pages[i].virtual_address,
+                           memory.pages[i].physical_page};
+    }
+    return result;
 }
 
 UserMemoryState capture_user_memory(const UserMemory &memory) {
-    UserMemoryState state{describe(memory), pmm_available_pages(), g_calls, {}, {}, {}};
+    UserMemoryState state{describe(memory), pmm_available_pages(), g_calls, {}};
+    const std::size_t count = memory.page_count < USER_MEMORY_MAX_PAGE
+        ? memory.page_count : USER_MEMORY_MAX_PAGE;
     if (memory.root != nullptr) {
-        state.code_mapping = query_mapping(memory.root, memory.code_address);
-        state.stack_mapping = query_mapping(memory.root, memory.stack_address);
-        // 数据页未启用时不查询 VA=0，保持默认 NOT_MAPPED
-        if (memory.data_page != nullptr || memory.data_address != 0) {
-            state.data_mapping = query_mapping(memory.root, memory.data_address);
+        for (std::size_t i = 0; i < count; ++i) {
+            state.mappings[i] = query_mapping(memory.root,
+                                              memory.pages[i].virtual_address);
         }
     }
     return state;
 }
 
 std::ostream &operator<<(std::ostream &stream, const MemoryDescriptor &memory) {
-    return stream << "{root=" << memory.root << ", code=" << memory.code_page
-                  << ", stack=" << memory.stack_page << ", data=" << memory.data_page << ", code_va=" << memory.code_address
-                  << ", stack_va=" << memory.stack_address << ", data_va=" << memory.data_address << '}';
+    stream << "{root=" << memory.root << ", count=" << memory.page_count
+           << ", pages=[";
+    for (std::size_t i = 0; i < memory.pages.size(); ++i) {
+        if (i != 0) {
+            stream << ", ";
+        }
+        stream << "{va=" << memory.pages[i].virtual_address
+               << ", pa=" << memory.pages[i].physical_page << '}';
+    }
+    return stream << "]}";
 }
 
 std::ostream &operator<<(std::ostream &stream, const CallCounts &calls) {
@@ -106,9 +120,15 @@ std::ostream &operator<<(std::ostream &stream, const Mapping &mapping) {
 }
 
 std::ostream &operator<<(std::ostream &stream, const UserMemoryState &state) {
-    return stream << "{memory=" << state.memory << ", pages=" << state.available_pages
-                  << ", calls=" << state.calls << ", code_mapping=" << state.code_mapping
-                  << ", stack_mapping=" << state.stack_mapping << ", data_mapping" << state.data_mapping << '}';
+    stream << "{memory=" << state.memory << ", pages=" << state.available_pages
+           << ", calls=" << state.calls << ", mappings=[";
+    for (std::size_t i = 0; i < state.mappings.size(); ++i) {
+        if (i != 0) {
+            stream << ", ";
+        }
+        stream << state.mappings[i];
+    }
+    return stream << "]}";
 }
 
 } // namespace tinyos_test

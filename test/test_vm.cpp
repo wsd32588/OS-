@@ -95,6 +95,71 @@ static int test_typed_addresses_and_pages(void) {
     return 0;
 }
 
+static int test_page_ranges(void) {
+    PageRange first{};
+    CHECK(PageRange::try_from_bytes(VirtAddr(0x40000000), 4096, first));
+    CHECK_EQ(first.start.val(), UINT64_C(0x40000));
+    CHECK_EQ(first.end.val(), UINT64_C(0x40001));
+
+    PageRange crossing{};
+    CHECK(PageRange::try_from_bytes(VirtAddr(0x40000ffe), 4, crossing));
+    CHECK_EQ(crossing.start.val(), UINT64_C(0x40000));
+    CHECK_EQ(crossing.end.val(), UINT64_C(0x40002));
+    CHECK(first.overlaps_with(crossing));
+
+    PageRange adjacent{};
+    CHECK(PageRange::try_from_bytes(VirtAddr(0x40001000), 4096, adjacent));
+    CHECK(!first.overlaps_with(adjacent));
+    const PageRange disjoint[] = {first, adjacent};
+    CHECK(validate_no_overlap(disjoint));
+    const PageRange overlapping[] = {crossing, adjacent};
+    CHECK(!validate_no_overlap(overlapping));
+
+    const PageRange with_unused_tail[] = {first, adjacent, {}};
+    CHECK(validate_no_overlap(std::span<const PageRange>(with_unused_tail, 2)));
+    CHECK(!validate_no_overlap(with_unused_tail));
+    CHECK(validate_no_overlap(std::span<const PageRange>{}));
+    const PageRange invalid_width[] = {
+        {VirtPageNum(1), VirtPageNum(UINT64_C(1) << 27)}};
+    CHECK(!validate_no_overlap(invalid_width));
+
+    PageRange output = first;
+    CHECK(!PageRange::try_from_bytes(VirtAddr(0x40000000), 0, output));
+    CHECK(!PageRange::try_from_bytes(VirtAddr(UINT64_C(0x4000000000)), 1, output));
+    CHECK(!PageRange::try_from_bytes(VirtAddr(UINTPTR_MAX), 2, output));
+    CHECK(!PageRange::try_from_bytes(VirtAddr(UINT64_C(0x3ffffff000)), 4096, output));
+    CHECK(!PageRange::try_from_bytes(VirtAddr(UINT64_C(0xfffffffffffff000)), 1, output));
+    CHECK(!PageRange::try_from_bytes(VirtAddr(0x1000),
+        UINT64_C(0xffffffc000000000) - 0x1000, output));
+    CHECK_EQ(output.start.val(), first.start.val());
+    CHECK_EQ(output.end.val(), first.end.val());
+
+    PageRange high{};
+    CHECK(PageRange::try_from_bytes(VirtAddr(UINT64_C(0xffffffc000001234)), 4096, high));
+    CHECK_EQ(high.start.val(), UINT64_C(0x4000001));
+    CHECK_EQ(high.end.val(), UINT64_C(0x4000003));
+
+    PhysPageRange physical{};
+    CHECK(PhysPageRange::try_from_bytes(
+        PhysAddr((UINT64_C(1) << 55) - SV39_PAGE_SIZE),
+        2 * SV39_PAGE_SIZE, physical));
+    CHECK_EQ(physical.end.val() - physical.start.val(), UINT64_C(2));
+    std::size_t count = 0;
+    for (PhysPageNum page : physical) {
+        CHECK_EQ(page.val(), physical.start.val() + count);
+        ++count;
+    }
+    CHECK_EQ(count, 2U);
+    const PhysPageRange duplicate_physical[] = {physical, physical};
+    CHECK(!validate_no_overlap(duplicate_physical));
+    const PhysPageRange invalid_physical[] = {
+        {PhysPageNum(1), PhysPageNum(UINT64_C(1) << 44)}};
+    CHECK(!validate_no_overlap(invalid_physical));
+
+    puts("[PASS] page ranges: checked bounds, overlap, physical iteration and active prefixes");
+    return 0;
+}
+
 static int test_typed_pte_and_legacy_codecs(void) {
     const auto entry = PageTableEntry::from_page(
         PhysPageNum(UINT64_C(0x80208)), SV39_PTE_V | SV39_PTE_R);
@@ -892,6 +957,9 @@ static int test_sv39_reclaim_after_allocation_failure(void) {
 int test_vm(void) {
     if (test_size() != 0) return -1;
     if (test_typed_addresses_and_pages() != 0) return -1;
+    if (test_page_ranges() != 0) {
+        return -1;
+    }
     if (test_typed_pte_and_legacy_codecs() != 0) return -1;
     if (test_canonical() != 0) return -1;
     if (test_vpn_index() != 0) return -1;

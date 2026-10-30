@@ -8,6 +8,7 @@
 #include "task/sched.h"
 #include "task/timer.h"
 #include "user/user_elf.h"
+#include "mm/user_loader.h"
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -255,24 +256,29 @@ void boot_start_user(
     /* kernel_root and satp_value are also read by the instrumented QEMU probe. */
     (void)satp_value;
 
+    const UserMemoryLayout memory_layout = {
+        .code_address = DEMO_USER_CODE_ADDRESS,
+        .stack_address = DEMO_USER_STACK_ADDRESS,
+        .data_address = DEMO_USER_DATA_ADDRESS
+    };
+
     UserMemory user_memory = {0};
 
-    if (prepare_demo_user_memory(
+    if (user_memory_load_elf(
         kernel_root,
         user_elf_start,
         elf_size,
         layout,
-        &user_memory) != SV39_OK
-    ) {
-        boot_fail("Demo user memory setup failed.\n");
-    }
-
+        &memory_layout,
+        &user_memory) != SV39_OK) {
+            boot_fail("Demo user memory setup failed.\n");
+        }
     sched_init();
     int task_a_id = task_create(task_a);
     int task_b_id = task_create(task_b);
     int user_task_id = task_create_user(
         layout->entry_address,
-        DEMO_USER_STACK_TOP,
+        memory_layout.stack_address + SV39_PAGE_SIZE,
         &user_memory
     );
 

@@ -57,44 +57,39 @@ public:
     Sv39PageTable *root = nullptr;
     unsigned long pages_after_root = 0;
     UserMemory memory{};
-    bool with_data_ = false;
+    std::size_t data_page_count_ = 0;
 
-
-    explicit UserMemoryFixture(bool with_data = false) {
-        with_data_ = with_data;
+    explicit UserMemoryFixture(bool with_data = false,
+                               std::size_t data_page_count = 1) {
+        data_page_count_ = with_data ? data_page_count : 0;
+        require(data_page_count_ <= USER_MEMORY_MAX_PAGE - 2,
+                "fixture content count fits descriptor");
         root = sv39_create_page_table();
         require(root != nullptr, "allocate borrowed root page table");
         pages_after_root = pmm_available_pages();
         memory.root = root;
-        memory.code_page = pmm_alloc_page();
-        memory.stack_page = pmm_alloc_page();
-        require(memory.code_page != nullptr && memory.stack_page != nullptr,
-                "allocate owned code and stack pages");
-        memory.code_address = code_address;
-        memory.stack_address = stack_address;
-
-        if (with_data != false) {
-            memory.data_page = pmm_alloc_page();
-            memory.data_address = data_address;
-
-            require_equal(sv39_map_page(memory.root, memory.data_address,
-                reinterpret_cast<uintptr_t>(memory.data_page),
-                SV39_PTE_U | SV39_PTE_R | SV39_PTE_W | SV39_PTE_A | SV39_PTE_D),
-                SV39_OK, "map owned page");
-            expect_mapping(memory.data_address, memory.data_page,
-                data_falgs
-            );
+        memory.page_count = 2 + data_page_count_;
+        memory.pages[0].virtual_address = code_address;
+        memory.pages[1].virtual_address = stack_address;
+        for (std::size_t i = 0; i < data_page_count_; ++i) {
+            memory.pages[2 + i].virtual_address = data_address + i * SV39_PAGE_SIZE;
         }
-        require_equal(sv39_map_page(root, code_address,
-            reinterpret_cast<uintptr_t>(memory.code_page), code_flags),
-            SV39_OK, "map owned code page");
-        require_equal(sv39_map_page(root, stack_address,
-            reinterpret_cast<uintptr_t>(memory.stack_page), stack_flags),
-            SV39_OK, "map owned stack page");
-        require_equal(pmm_available_pages(), pages_after_root - (with_data ? 5 : 4),
-                      "code, stack, L0 and L1 consume four pages");
-        expect_mapping(code_address, memory.code_page, code_flags);
-        expect_mapping(stack_address, memory.stack_page, stack_flags);
+        for (std::size_t i = 0; i < memory.page_count; ++i) {
+            UserMemoryPage& page = memory.pages[i];
+            page.physical_page = pmm_alloc_page();
+            require(page.physical_page != nullptr, "allocate owned user content page");
+        }
+        for (std::size_t i = 0; i < memory.page_count; ++i) {
+            const UserMemoryPage& page = memory.pages[i];
+            const uint64_t flags = i == 0 ? code_flags : stack_flags;
+            require_equal(sv39_map_page(root, page.virtual_address,
+                reinterpret_cast<uintptr_t>(page.physical_page), flags),
+                SV39_OK, "map owned user content page");
+            expect_mapping(page.virtual_address, page.physical_page, flags);
+        }
+        require_equal(pmm_available_pages(),
+                      pages_after_root - (memory.page_count + 2),
+                      "content pages and two intermediate tables are allocated");
     }
 
     UserMemoryState snapshot() const {
@@ -106,8 +101,8 @@ public:
                       SV39_ERR_NOT_MAPPED, "released code mapping is absent");
         require_equal(query_mapping(root, stack_address).result,
                       SV39_ERR_NOT_MAPPED, "released stack mapping is absent");
-        if (with_data_) {
-            require_equal(query_mapping(root, data_address).result,
+        for (std::size_t i = 0; i < data_page_count_; ++i) {
+            require_equal(query_mapping(root, data_address + i * SV39_PAGE_SIZE).result,
                           SV39_ERR_NOT_MAPPED, "released data mapping is absent");
         }
         require_equal(pmm_available_pages(), pages_after_root, "owned pages restored");

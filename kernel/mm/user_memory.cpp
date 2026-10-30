@@ -7,55 +7,54 @@
 #include "mm/pmm.h"
 
 int UserMemory::release() {
-    if (this->root == nullptr &&
-        this->code_page == nullptr &&
-        this->stack_page == nullptr &&
-        this->data_page == nullptr &&
-        this->code_address == 0 &&
-        this->stack_address == 0 &&
-        this->data_address == 0) {
+
+    if (page_count > USER_MEMORY_MAX_PAGE) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    if (root == nullptr && page_count == 0) {
         return SV39_OK;
     }
 
-    if (this->root == nullptr) {
+    if (root == nullptr || page_count == 0) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
-    /* 指针已清空但 VA 保留时，仍需要完成清理。 */
-    const bool data_enabled =
-        this->data_page != nullptr ||
-        this->data_address != 0;
 
-    if (data_enabled &&
-        (this->data_address == 0 ||
-        !sv39_virtual_address_is_canonical(this->data_address) ||
-        (this->data_address & (SV39_PAGE_SIZE - 1U)) != 0 ||
-        this->data_address == this->code_address ||
-        this->data_address == this->stack_address)) {
+    std::span<UserMemoryPage> active_pages(pages, page_count);
+
+    PageRange ranges[USER_MEMORY_MAX_PAGE]{};
+    PhysPageRange physical_ranges[USER_MEMORY_MAX_PAGE]{};
+    size_t physical_count = 0;
+
+    for (size_t i = 0; i < active_pages.size(); ++i) {
+        const UserMemoryPage& page = active_pages[i];
+        const VirtAddr address(page.virtual_address);
+        if (address.val() == 0 || !address.is_page_aligned() ||
+            !PageRange::try_from_bytes(address, SV39_PAGE_SIZE, ranges[i])) {
             return SV39_ERR_INVALID_ARGUMENT;
+        }
+
+        // Cleared physical pointers belong to a release that can still retry.
+        if (page.physical_page != nullptr) {
+            const PhysAddr physical(page.physical_page);
+            if (!physical.is_page_aligned() ||
+                !PhysPageRange::try_from_bytes(
+                    physical, SV39_PAGE_SIZE, physical_ranges[physical_count])) {
+                return SV39_ERR_INVALID_ARGUMENT;
+            }
+            ++physical_count;
+        }
     }
 
-    /* 同一个物理页不能被描述成两份拥有的资源。 */
-    if ((this->code_page != nullptr &&
-        (this->code_page == this->stack_page ||
-        this->code_page == this->data_page)) ||
-        (this->stack_page != nullptr &&
-        this->stack_page == this->data_page)) {
+    const std::span<const PageRange> active_ranges(ranges, active_pages.size());
+    const std::span<const PhysPageRange> owned_ranges(physical_ranges, physical_count);
+    // Distinct VAs and unique physical ownership are independent requirements.
+    if (!validate_no_overlap(active_ranges) || !validate_no_overlap(owned_ranges)) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
-    
-    struct PageReference {
-        void** physical_page;
-        uintptr_t virtual_address;
-    };
-    PageReference page_references[] = {
-        {&code_page, code_address},
-        {&stack_page, stack_address},
-        {&data_page, data_address},
-    };
-    const std::span<PageReference> pages(
-        page_references, data_enabled ? 3 : 2);
 
-    for (const PageReference& page : pages) {
+
+    for (const UserMemoryPage& page : active_pages) {
         uint64_t mapped_address = 0;
         uint64_t flags = 0;
 
@@ -72,17 +71,17 @@ int UserMemory::release() {
             return result;
         }
 
-        const PhysAddr expected(*page.physical_page);
+        const PhysAddr expected(page.physical_page);
         const PhysAddr actual(mapped_address);
 
-        if (*page.physical_page == nullptr ||
+        if (page.physical_page == nullptr ||
             actual.val() != expected.val() ||
             (flags & SV39_PTE_U) == 0) {
             return SV39_ERR_INVALID_ARGUMENT;
         }
     }
 
-    for (const PageReference& page : pages) {
+    for (const UserMemoryPage& page : active_pages) {
         const int result =
             sv39_unmap_page(root, page.virtual_address);
 
@@ -93,24 +92,24 @@ int UserMemory::release() {
     }
 
 
-    for (const PageReference& page : pages) {
+    for (const UserMemoryPage& page : active_pages) {
         if (sv39_flush_page(page.virtual_address) != SV39_OK) {
             return SV39_ERR_INVALID_ARGUMENT;
         }
     }
 
 
-    for (const PageReference& page : pages) {
-        if (*page.physical_page != nullptr) {
-            if (pmm_free_page(*page.physical_page) != 0) {
+    for (UserMemoryPage& page : active_pages) {
+        if (page.physical_page != nullptr) {
+            if (pmm_free_page(page.physical_page) != 0) {
                 return SV39_ERR_PAGE_FREE_FAILED;
             }
             // Clear the owning member immediately so a failed release can retry.
-            *page.physical_page = nullptr;
+            page.physical_page = nullptr;
         }
     }
 
-    for (const PageReference& page : pages) {
+    for (const UserMemoryPage& page : active_pages) {
         const int result =
             root->reclaim_empty_tables(page.virtual_address);
         if (result != SV39_OK &&
@@ -131,5 +130,32 @@ extern "C" {
         }
 
         return memory->release();
+    }
+
+const UserMemoryPage* user_memory_find_page(
+    const UserMemory* memory,
+    uintptr_t page_address
+    ) {
+    if (memory == nullptr || memory->root == nullptr) {
+        return nullptr;
+    }
+
+    if (memory->page_count == 0 || memory->page_count > USER_MEMORY_MAX_PAGE) {
+        return nullptr;
+    }
+    const VirtAddr address(page_address);
+    if (page_address == 0 || !address.is_valid() || !address.is_page_aligned()) {
+        return nullptr;
+    }
+
+    for (size_t i = 0; i < memory->page_count; ++i) {
+        const UserMemoryPage& page = memory->pages[i];
+
+        if (page.virtual_address == page_address) {
+            return &page;
+        }
+    }
+
+    return nullptr;
     }
 }

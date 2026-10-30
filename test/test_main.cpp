@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+int test_user_page_collection();
+
 int main(void) {
     if (test_pmm() != 0) {
         return EXIT_FAILURE;
@@ -18,6 +20,10 @@ int main(void) {
     }
 
     if (test_user_memory() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_user_page_collection() != 0) {
         return EXIT_FAILURE;
     }
 

@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <span>
 #include <type_traits>
 
 struct PhysicalTag {};
@@ -251,30 +252,111 @@ class PageNum {
 using PhysPageNum = PageNum<PhysicalTag>;
 using VirtPageNum = PageNum<VirtualTag>;
 
-struct PageRange {
-    VirtPageNum start;
-    VirtPageNum end; // 左闭右开 [start, end)
+template <typename Tag>
+struct BasicPageRange {
+    PageNum<Tag> start;
+    PageNum<Tag> end; // 左闭右开 [start, end)
 
-    [[nodiscard]] constexpr bool overlaps_with(const PageRange& other) const noexcept {
-        return (start.val() < other.end.val()) && (other.start.val() < end.val());
+    [[nodiscard]] constexpr bool is_valid() const noexcept {
+        if (!start.is_valid() || !end.is_valid() || start.val() >= end.val()) {
+            return false;
+        }
+        if constexpr (std::is_same_v<Tag, VirtualTag>) {
+            // A virtual range cannot cross the Sv39 canonical-address hole.
+            constexpr unsigned int half_shift = PageNum<Tag>::VALUE_BITS - 1;
+            return (start.val() >> half_shift) == (end.val() >> half_shift);
+        }
+        return true;
     }
-};
 
-// 检验 ELF 的所有段或多个内存映射区间是否互不重叠
-template <size_t N>
-constexpr bool validate_no_overlap(const PageRange (&ranges)[N]) noexcept {
-    for (size_t i = 0; i < N; ++i) {
-        // 先确保区间自身合法
-        if (ranges[i].start.val() >= ranges[i].end.val()){
+    [[nodiscard]] constexpr bool overlaps_with(const BasicPageRange& other) const noexcept {
+        return is_valid() && other.is_valid() &&
+            start.val() < other.end.val() && other.start.val() < end.val();
+    }
+
+    [[nodiscard]] static constexpr bool try_from_bytes(
+        Addr<Tag> address,
+        size_t byte_count,
+        BasicPageRange& result
+    ) noexcept {
+        if (byte_count == 0) {
             return false;
         }
 
-        // 两两比对
-        for (size_t j = i + 1; j < N; ++j) {
+        Addr<Tag> byte_end;
+        PageNum<Tag> page_end;
+        if (!address.try_add(byte_count, byte_end) ||
+            !PageNum<Tag>::try_from_ceil(byte_end, page_end)) {
+            return false;
+        }
+
+        const BasicPageRange candidate{PageNum<Tag>::from_floor(address), page_end};
+        if (!candidate.is_valid()) {
+            return false;
+        }
+
+        result = candidate;
+        return true;
+    }
+};
+
+using PhysPageRange = BasicPageRange<PhysicalTag>;
+using VirtPageRange = BasicPageRange<VirtualTag>;
+using PageRange = VirtPageRange;
+
+template <typename Tag>
+[[nodiscard]] constexpr bool validate_no_overlap(
+    std::span<const BasicPageRange<Tag>> ranges
+) noexcept {
+    for (size_t i = 0; i < ranges.size(); ++i) {
+        if (!ranges[i].is_valid()) {
+            return false;
+        }
+
+        for (size_t j = i + 1; j < ranges.size(); ++j) {
             if (ranges[i].overlaps_with(ranges[j])) {
-                return false; // 发现区间重叠
+                return false;
             }
         }
     }
     return true;
+}
+
+template < typename Tag, size_t N>
+[[nodiscard]] constexpr bool validate_no_overlap(
+    const BasicPageRange<Tag> (&ranges)[N]
+) noexcept {
+    return validate_no_overlap(std::span<const BasicPageRange<Tag>>(ranges, N));
+}
+
+template <typename Tag>
+class PageIter {
+    public:
+    constexpr explicit PageIter(PageNum<Tag> page) noexcept : page_(page) {}
+    [[nodiscard]] constexpr PageNum<Tag> operator*() const noexcept {return page_;}
+    constexpr PageIter& operator++() noexcept {
+        page_ = PageNum<Tag>(page_.val() + 1);
+        return *this;
+    }
+    constexpr PageIter operator++(int) noexcept {
+        PageIter old = *this;
+        ++(*this);
+        return old;
+    }
+
+    [[nodiscard]] constexpr bool operator!=(const PageIter& other) const noexcept {
+        return page_.val() != other.page_.val();
+    }
+    private:
+    PageNum<Tag> page_;
+};
+
+template <typename Tag>
+[[nodiscard]] constexpr PageIter<Tag> begin (const BasicPageRange<Tag>& r) noexcept {
+    return PageIter(r.start);
+}
+
+template <typename Tag>
+[[nodiscard]] constexpr PageIter<Tag> end (const BasicPageRange<Tag>& r) noexcept {
+    return PageIter(r.end);
 }

@@ -57,9 +57,9 @@ void test_three_page_release() {
     const uintptr_t code_va = fixture.code_address;
     const uintptr_t stack_va = fixture.stack_address;
     const uintptr_t data_va = fixture.data_address;
-    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.code_page);
-    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.stack_page);
-    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.data_page);
+    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[0].physical_page);
+    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[1].physical_page);
+    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[2].physical_page);
     const TablePAs tables = capture_table_pas(fixture);
 
     const std::size_t begin = host_call_events().size();
@@ -74,11 +74,11 @@ void test_three_page_release() {
                   "code, stack, data, L0 and L1 are returned");
     require_equal(release.after.memory, MemoryDescriptor{},
                   "seven descriptor fields cleared");
-    require_equal(release.after.code_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(release.after.mappings[0].result, SV39_ERR_NOT_MAPPED,
                   "code mapping is removed");
-    require_equal(release.after.stack_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(release.after.mappings[1].result, SV39_ERR_NOT_MAPPED,
                   "stack mapping is removed");
-    require_equal(release.after.data_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(release.after.mappings[2].result, SV39_ERR_NOT_MAPPED,
                   "data mapping is removed");
     require_equal(release.after.calls,
                   CallCounts{release.before.calls.unmap + 3,
@@ -141,7 +141,7 @@ void damage_missing_u(const UserMemoryFixture &fixture, void *) {
     require_equal(sv39_unmap_page(fixture.root, fixture.data_address), SV39_OK,
                   "unmap the real data mapping");
     require_equal(sv39_map_page(fixture.root, fixture.data_address,
-                                reinterpret_cast<uintptr_t>(fixture.memory.data_page),
+                                reinterpret_cast<uintptr_t>(fixture.memory.pages[2].physical_page),
                                 SV39_PTE_R | SV39_PTE_W | SV39_PTE_A | SV39_PTE_D),
                   SV39_OK, "remap the data page without U");
 }
@@ -174,7 +174,7 @@ void run_data_mapping_damage(const MappingDamage &scenario) {
     require_equal(sv39_unmap_page(fixture.root, fixture.data_address), SV39_OK,
                   "remove the damaged mapping");
     require_equal(sv39_map_page(fixture.root, fixture.data_address,
-                                reinterpret_cast<uintptr_t>(fixture.memory.data_page),
+                                reinterpret_cast<uintptr_t>(fixture.memory.pages[2].physical_page),
                                 UserMemoryFixture::data_falgs),
                   SV39_OK, "restore the real data mapping");
     require_equal(pmm_free_page(spare), 0, "return the spare page");
@@ -191,9 +191,9 @@ void test_data_free_failure_retry() {
     const uintptr_t code_va = fixture.code_address;
     const uintptr_t stack_va = fixture.stack_address;
     const uintptr_t data_va = fixture.data_address;
-    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.code_page);
-    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.stack_page);
-    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.data_page);
+    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[0].physical_page);
+    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[1].physical_page);
+    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[2].physical_page);
     const TablePAs tables = capture_table_pas(fixture);
 
     const std::size_t begin = host_call_events().size();
@@ -201,7 +201,7 @@ void test_data_free_failure_retry() {
     const auto first = observe(
         [&] { return fixture.snapshot(); },
         [&] {
-            host_set_free_failure(fixture.memory.data_page);
+            host_set_free_failure(fixture.memory.pages[2].physical_page);
             const int result = user_memory_release(&fixture.memory);
             host_set_free_failure(nullptr);
             return result;
@@ -211,18 +211,18 @@ void test_data_free_failure_retry() {
                   "data free failure is reported");
 
     auto expected_memory = first.before.memory;
-    expected_memory.code_page = nullptr;
-    expected_memory.stack_page = nullptr;
+    expected_memory.pages[0].physical_page = nullptr;
+    expected_memory.pages[1].physical_page = nullptr;
     require_equal(first.after.memory, expected_memory,
                   "failed call keeps the data page, root and all three VAs");
     require_equal(first.after.available_pages,
                   first.before.available_pages + 2,
                   "only code and stack pages are returned");
-    require_equal(first.after.code_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[0].result, SV39_ERR_NOT_MAPPED,
                   "code mapping is removed");
-    require_equal(first.after.stack_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[1].result, SV39_ERR_NOT_MAPPED,
                   "stack mapping is removed");
-    require_equal(first.after.data_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[2].result, SV39_ERR_NOT_MAPPED,
                   "data mapping is removed");
     require_equal(first.after.calls,
                   CallCounts{first.before.calls.unmap + 3,
@@ -285,9 +285,9 @@ void test_data_flush_failure_retry() {
     const uintptr_t code_va = fixture.code_address;
     const uintptr_t stack_va = fixture.stack_address;
     const uintptr_t data_va = fixture.data_address;
-    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.code_page);
-    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.stack_page);
-    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.data_page);
+    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[0].physical_page);
+    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[1].physical_page);
+    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[2].physical_page);
     const TablePAs tables = capture_table_pas(fixture);
 
     const std::size_t begin = host_call_events().size();
@@ -307,11 +307,11 @@ void test_data_flush_failure_retry() {
                   "failed flush keeps all three pages, root and VAs");
     require_equal(first.after.available_pages, first.before.available_pages,
                   "no page is returned before the flush succeeds");
-    require_equal(first.after.code_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[0].result, SV39_ERR_NOT_MAPPED,
                   "code mapping is removed");
-    require_equal(first.after.stack_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[1].result, SV39_ERR_NOT_MAPPED,
                   "stack mapping is removed");
-    require_equal(first.after.data_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[2].result, SV39_ERR_NOT_MAPPED,
                   "data mapping is removed");
     require_equal(first.after.calls,
                   CallCounts{first.before.calls.unmap + 3,
@@ -384,9 +384,9 @@ void test_release_preserves_other_mapping() {
     const uintptr_t code_va = fixture.code_address;
     const uintptr_t stack_va = fixture.stack_address;
     const uintptr_t data_va = fixture.data_address;
-    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.code_page);
-    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.stack_page);
-    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.data_page);
+    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[0].physical_page);
+    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[1].physical_page);
+    const uintptr_t data_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[2].physical_page);
     const unsigned int vpn2 = sv39_vpn_index(fixture.code_address, 2);
     const uint64_t branch_before = fixture.root->entries[vpn2];
 
@@ -403,11 +403,11 @@ void test_release_preserves_other_mapping() {
                   "only the three owned content pages are returned");
     require_equal(release.after.memory, MemoryDescriptor{},
                   "seven descriptor fields cleared");
-    require_equal(release.after.code_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(release.after.mappings[0].result, SV39_ERR_NOT_MAPPED,
                   "code mapping is removed");
-    require_equal(release.after.stack_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(release.after.mappings[1].result, SV39_ERR_NOT_MAPPED,
                   "stack mapping is removed");
-    require_equal(release.after.data_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(release.after.mappings[2].result, SV39_ERR_NOT_MAPPED,
                   "data mapping is removed");
     require_equal(query_mapping(fixture.root, foreign_address), foreign_mapping,
                   "foreign mapping keeps its PA and flags");
@@ -462,36 +462,36 @@ struct DescriptorDamage {
 
 void damage_root_null(const UserMemoryFixture &fixture, UserMemory &broken) {
     broken = {};
-    broken.data_page = fixture.memory.data_page;
-    broken.data_address = fixture.memory.data_address;
+    broken.page_count = 1;
+    broken.pages[0] = fixture.memory.pages[2];
 }
 
 void damage_data_va_zero(const UserMemoryFixture &, UserMemory &broken) {
-    broken.data_address = 0;
+    broken.pages[2].virtual_address = 0;
 }
 
 void damage_data_va_unaligned(const UserMemoryFixture &, UserMemory &broken) {
-    broken.data_address += 1;
+    broken.pages[2].virtual_address += 1;
 }
 
 void damage_data_va_noncanonical(const UserMemoryFixture &, UserMemory &broken) {
-    broken.data_address = UINT64_C(1) << 39;
+    broken.pages[2].virtual_address = UINT64_C(1) << 39;
 }
 
 void damage_data_va_code(const UserMemoryFixture &fixture, UserMemory &broken) {
-    broken.data_address = fixture.code_address;
+    broken.pages[2].virtual_address = fixture.code_address;
 }
 
 void damage_data_va_stack(const UserMemoryFixture &fixture, UserMemory &broken) {
-    broken.data_address = fixture.stack_address;
+    broken.pages[2].virtual_address = fixture.stack_address;
 }
 
 void damage_data_pa_code(const UserMemoryFixture &, UserMemory &broken) {
-    broken.data_page = broken.code_page;
+    broken.pages[2].physical_page = broken.pages[0].physical_page;
 }
 
 void damage_data_pa_stack(const UserMemoryFixture &, UserMemory &broken) {
-    broken.data_page = broken.stack_page;
+    broken.pages[2].physical_page = broken.pages[1].physical_page;
 }
 
 const DescriptorDamage descriptor_damages[] = {

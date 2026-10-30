@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 #include "mm/vm.h"
-#include "mm/user_memory.h"
 #include "user/user_elf.h"
 
 /* Demo user address layout; private to the boot stages. */
@@ -36,12 +35,6 @@ int identity_mapping_is_present(
     uint64_t address,
     uint64_t expected_flags);
 
-int prepare_demo_user_memory(
-    Sv39PageTable *root,
-    const void *image,
-    size_t image_size,
-    const UserElfLayout *layout,
-    UserMemory *memory_out);
 
 void task_a(void);
 void task_b(void);

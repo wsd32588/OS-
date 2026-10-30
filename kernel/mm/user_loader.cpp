@@ -41,27 +41,15 @@ int load_user_elf(
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
-    if (memory_layout.code_address == memory_layout.stack_address ||
-        memory_layout.code_address == memory_layout.data_address ||
-        memory_layout.stack_address == memory_layout.data_address) {
-        return SV39_ERR_INVALID_ARGUMENT;
-    }
-
     const UserElfSegment* code_segment = nullptr;
     const UserElfSegment* data_segment = nullptr;
 
     for (size_t i = 0; i < elf_layout.load_segment_count; ++i) {
         const UserElfSegment* segment = &elf_layout.segments[i];
 
-        if (segment->memory_size <= 0 ||
-            segment->memory_size > SV39_PAGE_SIZE) {
+        if (segment->memory_size == 0) {
             return SV39_ERR_INVALID_ARGUMENT;
         }
-        if (segment->file_size > SV39_PAGE_SIZE) {
-            return SV39_ERR_INVALID_ARGUMENT;
-        }
-
-        /* 按 VA 找段，不依赖数组顺序；重复段/未知段/权限不符都拒绝。 */
 
         if (segment->virtual_address == memory_layout.code_address) {
             if (code_segment != nullptr || segment->flags != 5U) {   /* R|X */
@@ -86,13 +74,35 @@ int load_user_elf(
     if (code_segment->memory_size == 0 ||
         code_segment->memory_size > SV39_PAGE_SIZE ||
         data_segment->memory_size == 0 ||
-        data_segment->memory_size > SV39_PAGE_SIZE ||
         code_segment->file_size > code_segment->memory_size ||
         data_segment->file_size > data_segment->memory_size ||
         code_segment->file_offset > image.size() ||
         code_segment->file_size > image.size() - code_segment->file_offset ||
         data_segment->file_offset > image.size() ||
         data_segment->file_size > image.size() - data_segment->file_offset) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    const uint64_t bytes = data_segment->memory_size;
+    const uint64_t count = bytes / SV39_PAGE_SIZE +
+        (bytes % SV39_PAGE_SIZE != 0);
+    if (count == 0 || count > USER_MEMORY_MAX_PAGE - 2) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+    const size_t data_page_count = static_cast<size_t>(count);
+    const size_t total_pages = 2 + data_page_count;
+
+    PageRange ranges[3]{};
+
+    if (!PageRange::try_from_bytes(VirtAddr(memory_layout.code_address),
+        SV39_PAGE_SIZE, ranges[0]) ||
+        !PageRange::try_from_bytes(VirtAddr(memory_layout.stack_address),
+        SV39_PAGE_SIZE, ranges[1]) ||
+        !PageRange::try_from_bytes(VirtAddr(memory_layout.data_address),
+        static_cast<size_t>(data_segment->memory_size),
+        ranges[2]) ||
+        !validate_no_overlap(ranges)
+    ) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
@@ -117,16 +127,37 @@ int load_user_elf(
         bool mapping_attempted = false;
         bool mapped = false;
     };
-    PreparedPage pages[] = {
-        {memory_layout.code_address, user_code_flags, code_segment},
-        {memory_layout.stack_address, user_writable_flags, nullptr},
-        {memory_layout.data_address, user_writable_flags, data_segment},
-    };
+    PreparedPage prepare_pages[USER_MEMORY_MAX_PAGE] {};
+
+    prepare_pages[0] = {memory_layout.code_address, user_code_flags, code_segment};
+    prepare_pages[1] = {memory_layout.stack_address, user_writable_flags, nullptr};
+
+    UserMemory prepared_memory{};
+
+    size_t next = 2;
+    for (VirtPageNum vpn : ranges[2]) {
+        prepare_pages[next++] = {
+            vpn.to_addr().val(),
+            user_writable_flags,
+            data_segment
+        };
+    }
+    std::span<PreparedPage> active_pages(prepare_pages, total_pages);
+
     // Preserve the existing rollback order separately from allocation order.
-    constexpr size_t rollback_order[] = {1, 0, 2};
+    size_t rollback_order[USER_MEMORY_MAX_PAGE] {};
+
+    rollback_order[0] = 1;
+    rollback_order[1] = 0;
+
+    for (size_t i = 2; i < total_pages; ++i) {
+        rollback_order[i] = i;
+    }
+
+    std::span<const size_t> rollback_pages(rollback_order, total_pages);
     int result = SV39_OK;
 
-    for (PreparedPage& page : pages) {
+    for (PreparedPage& page : active_pages) {
         page.physical_page = pmm_alloc_page();
         if (page.physical_page == nullptr) {
             result = SV39_ERR_NO_MEMORY;
@@ -134,16 +165,38 @@ int load_user_elf(
         }
     }
 
-    for (const PreparedPage& page : pages) {
+
+    for (PreparedPage& page : active_pages) {
         // The user stack has no ELF segment; PMM already cleared its page.
         if (page.segment == nullptr) {
             continue;
         }
+
+        const UserElfSegment& segment = *page.segment;
+        const size_t offset = page.virtual_address -
+            static_cast<uintptr_t>(segment.virtual_address);
+
+        const size_t remaining = static_cast<size_t>(segment.memory_size) - offset;
+        const size_t memory_bytes = remaining < SV39_PAGE_SIZE ? remaining : SV39_PAGE_SIZE;
+
+        size_t file_bytes = 0;
+        if (offset < segment.file_size) {
+            const size_t available =
+                static_cast<size_t>(segment.file_size) - offset;
+            file_bytes = available < memory_bytes ? available : memory_bytes;
+        }
+
+        const size_t source_offset = static_cast<size_t>(segment.file_offset) +
+            (offset < segment.file_size ?
+                offset
+                : static_cast<size_t>(segment.file_size)
+            );
+
         const int load_result = user_image_load_segment(
             page.physical_page, SV39_PAGE_SIZE, image.data(), image.size(),
-            static_cast<size_t>(page.segment->file_offset),
-            static_cast<size_t>(page.segment->file_size),
-            static_cast<size_t>(page.segment->memory_size));
+            source_offset,
+            file_bytes,
+            memory_bytes);
         if (load_result != SV39_OK) {
             result = SV39_ERR_INVALID_ARGUMENT;
             goto clean_up;
@@ -152,7 +205,7 @@ int load_user_elf(
 
     asm volatile("fence.i" ::: "memory");
 
-    for (PreparedPage& page : pages) {
+    for (PreparedPage& page : active_pages) {
         page.mapping_attempted = true;
         result = sv39_map_page(
             &root,
@@ -164,27 +217,29 @@ int load_user_elf(
         page.mapped = true;
     }
 
-    for (const PreparedPage& page : pages) {
+    for (PreparedPage& page : active_pages) {
         result = sv39_flush_page(page.virtual_address);
         if (result != SV39_OK) {
             goto clean_up;
         }
     }
 
-    memory_out = UserMemory{
-        .root = &root,
-        .code_page = pages[0].physical_page,
-        .stack_page = pages[1].physical_page,
-        .code_address = memory_layout.code_address,
-        .stack_address = memory_layout.stack_address,
-        .data_page = pages[2].physical_page,
-        .data_address = memory_layout.data_address,
-    };
+    prepared_memory.root = &root;
+    prepared_memory.page_count = total_pages;
+
+    for (size_t i = 0; i < total_pages; ++i) {
+        prepared_memory.pages[i] = {
+            prepare_pages[i].virtual_address,
+            prepare_pages[i].physical_page
+        };
+    }
+
+    memory_out = prepared_memory;
 
     return SV39_OK;
 clean_up:
-    for (size_t index : rollback_order) {
-        const PreparedPage& page = pages[index];
+    for (size_t index : rollback_pages) {
+        const PreparedPage& page = prepare_pages[index];
         if (page.mapped) {
             const int error = sv39_unmap_page(&root, page.virtual_address);
             if (error != SV39_OK && error != SV39_ERR_NOT_MAPPED) {
@@ -193,8 +248,8 @@ clean_up:
         }
     }
 
-    for (size_t index : rollback_order) {
-        const PreparedPage& page = pages[index];
+    for (size_t index : rollback_pages) {
+        const PreparedPage& page = prepare_pages[index];
         if (page.mapping_attempted) {
             const int error = sv39_flush_page(page.virtual_address);
             if (error != SV39_OK) {
@@ -203,7 +258,7 @@ clean_up:
         }
     }
 
-    for (PreparedPage& page : pages) {
+    for (PreparedPage& page : active_pages) {
         if (page.physical_page != nullptr) {
             if (pmm_free_page(page.physical_page) != 0) {
                 return SV39_ERR_PAGE_FREE_FAILED;
@@ -212,8 +267,8 @@ clean_up:
         }
     }
 
-    for (size_t index : rollback_order) {
-        const PreparedPage& page = pages[index];
+    for (size_t index : rollback_pages) {
+        const PreparedPage& page = prepare_pages[index];
         if (page.mapping_attempted) {
             const int error =
                 root.reclaim_empty_tables(page.virtual_address);

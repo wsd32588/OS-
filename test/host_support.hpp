@@ -3,6 +3,8 @@
 
 #include "c_api.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <vector>
@@ -27,14 +29,16 @@ struct CallEvent {
 const CallCounts &host_call_counts();
 const std::vector<CallEvent> &host_call_events();
 
+struct PageDescriptor {
+    uintptr_t virtual_address = 0;
+    void* physical_page = nullptr;
+    bool operator==(const PageDescriptor &) const = default;
+};
+
 struct MemoryDescriptor {
-    Sv39PageTable *root;
-    void *code_page;
-    void *stack_page;
-    void *data_page;
-    uintptr_t code_address;
-    uintptr_t stack_address;
-    uintptr_t data_address;
+    Sv39PageTable* root = nullptr;
+    std::size_t page_count = 0;
+    std::array<PageDescriptor, USER_MEMORY_MAX_PAGE> pages{};
     bool operator==(const MemoryDescriptor &) const = default;
 };
 
@@ -49,9 +53,7 @@ struct UserMemoryState {
     MemoryDescriptor memory;
     unsigned long available_pages;
     CallCounts calls;
-    Mapping code_mapping;
-    Mapping stack_mapping;
-    Mapping data_mapping;
+    std::array<Mapping, USER_MEMORY_MAX_PAGE> mappings;
     bool operator==(const UserMemoryState &) const = default;
 };
 

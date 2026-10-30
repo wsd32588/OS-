@@ -39,6 +39,5 @@ SECTIONS {
 
     ASSERT(_start == 0x40000000, "user entry must be at code start")
     ASSERT(__user_code_end - __user_code_start <= 4096, "user code exceeds one page")
-    ASSERT(__user_bss_end - __user_data_start <= 4096, "user data and BSS exceed one page")
     ASSERT(SIZEOF(.unsupported) == 0, "unsupported user runtime sections")
 }

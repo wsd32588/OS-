@@ -223,13 +223,21 @@ int task_create_user(
     if (entry == 0 ||
         memory == NULL ||
         memory->root == NULL ||
-        memory->code_page == NULL ||
-        memory->stack_page == NULL ||
         (entry & 1U) != 0 ||
         user_stack_top == 0 ||
         (user_stack_top & 0xFUL) != 0) {
         return -1;
-        }
+    }
+
+    const uintptr_t page_mask = ~((uintptr_t)SV39_PAGE_SIZE - 1U);
+    const UserMemoryPage* code =
+        user_memory_find_page(memory, entry & page_mask);
+    const UserMemoryPage* stack =
+        user_memory_find_page(memory, (user_stack_top - 1U) & page_mask);
+    if (code == NULL || stack == NULL ||
+        code->physical_page == NULL || stack->physical_page == NULL) {
+        return -1;
+    }
 
     struct task* task = NULL;
     int task_id = task_allocate(&task);

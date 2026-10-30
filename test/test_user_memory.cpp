@@ -30,9 +30,9 @@ void test_invalid_ownership(UserPage target, MappingProblem problem) {
     const uint64_t address = stack ?
         fixture.stack_address : fixture.code_address;
     void* owned_page = stack ?
-        fixture.memory.stack_page : fixture.memory.code_page;
+        fixture.memory.pages[1].physical_page : fixture.memory.pages[0].physical_page;
     void* other_page = stack ?
-        fixture.memory.code_page : fixture.memory.stack_page;
+        fixture.memory.pages[0].physical_page : fixture.memory.pages[1].physical_page;
     const uint64_t flags = stack ?
         fixture.stack_flags : fixture.code_flags;
 
@@ -147,8 +147,8 @@ void test_stack_free_failure_retry() {
 
     const uintptr_t code_va = fixture.code_address;
     const uintptr_t stack_va = fixture.stack_address;
-    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.code_page);
-    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.stack_page);
+    const uintptr_t code_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[0].physical_page);
+    const uintptr_t stack_pa = reinterpret_cast<uintptr_t>(fixture.memory.pages[1].physical_page);
 
     const unsigned int vpn2 = sv39_vpn_index(fixture.code_address, 2);
     const unsigned int vpn1 = sv39_vpn_index(fixture.code_address, 1);
@@ -176,7 +176,7 @@ void test_stack_free_failure_retry() {
     const auto first = observe(
         [&] { return fixture.snapshot(); },
         [&] {
-            host_set_free_failure(fixture.memory.stack_page);
+            host_set_free_failure(fixture.memory.pages[1].physical_page);
             const int result = user_memory_release(&fixture.memory);
             host_set_free_failure(nullptr); // 表示结束失败调用，不然每次调用都返回 -1
             return result;
@@ -190,19 +190,19 @@ void test_stack_free_failure_retry() {
 
     /*
      * 这个 excepted_memory 不能动
-     * 因为不可以直接把 first.before.memory.code_page 设置为nullptr
+     * 因为不可以直接把 first.before.memory.pages[0].physical_page 设置为nullptr
      */
     auto expected_memory = first.before.memory;
-    expected_memory.code_page = nullptr;
+    expected_memory.pages[0].physical_page = nullptr;
     require_equal(first.after.memory, expected_memory,
                   "failure preserves remaining ownership");
 
     require_equal(first.after.available_pages,
                   first.before.available_pages + 1,
                   "only code page is restored");
-    require_equal(first.after.code_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[0].result, SV39_ERR_NOT_MAPPED,
                   "code mapping is removed");
-    require_equal(first.after.stack_mapping.result, SV39_ERR_NOT_MAPPED,
+    require_equal(first.after.mappings[1].result, SV39_ERR_NOT_MAPPED,
                   "stack mapping is removed");
 
     require_equal(
@@ -272,11 +272,11 @@ void test_stack_free_failure_retry() {
 void test_release_after_manual_unmap() {
     UserMemoryFixture fixture;
 
-    const uintptr_t va_code = fixture.memory.code_address;
-    const uintptr_t va_stack = fixture.memory.stack_address;
+    const uintptr_t va_code = fixture.memory.pages[0].virtual_address;
+    const uintptr_t va_stack = fixture.memory.pages[1].virtual_address;
 
-    const uintptr_t pa_stack = reinterpret_cast<uintptr_t>(fixture.memory.stack_page);
-    const uintptr_t pa_code = reinterpret_cast<uintptr_t>(fixture.memory.code_page);
+    const uintptr_t pa_stack = reinterpret_cast<uintptr_t>(fixture.memory.pages[1].physical_page);
+    const uintptr_t pa_code = reinterpret_cast<uintptr_t>(fixture.memory.pages[0].physical_page);
     const unsigned int vpn2 = sv39_vpn_index(
         va_code, 2);
     const unsigned int vpn1 = sv39_vpn_index(
@@ -295,10 +295,10 @@ void test_release_after_manual_unmap() {
                   SV39_OK, "manually unmap stack leaf");
 
     require_equal(
-        query_mapping(fixture.root, fixture.memory.code_address).result,
+        query_mapping(fixture.root, fixture.memory.pages[0].virtual_address).result,
         SV39_ERR_NOT_MAPPED, "code leaf is already gone");
     require_equal(
-        query_mapping(fixture.root, fixture.memory.stack_address).result,
+        query_mapping(fixture.root, fixture.memory.pages[1].virtual_address).result,
         SV39_ERR_NOT_MAPPED, "stack leaf is already gone");
     require_equal(pmm_available_pages(), fixture.pages_after_root - 4);
 
@@ -356,10 +356,10 @@ void test_release_without_root() {
 
     const auto capture = [&] {
         auto state = fixture.snapshot();
-        state.code_mapping =
-            query_mapping(fixture.root, fixture.memory.code_address);
-        state.stack_mapping =
-            query_mapping(fixture.root, fixture.memory.stack_address);
+        state.mappings[0] =
+            query_mapping(fixture.root, fixture.memory.pages[0].virtual_address);
+        state.mappings[1] =
+            query_mapping(fixture.root, fixture.memory.pages[1].virtual_address);
         return state;
     };
 
@@ -400,8 +400,8 @@ void test_flush_failure_retry(unsigned long failure_attempt) {
     require_equal(first.result, SV39_ERR_INVALID_ARGUMENT,
                   "flush failure is reported before freeing resources");
     auto expected = first.before;
-    expected.code_mapping = Mapping{};
-    expected.stack_mapping = Mapping{};
+    expected.mappings[0] = Mapping{};
+    expected.mappings[1] = Mapping{};
     expected.calls.unmap += 2;
     // The first failed flush short-circuits the second call in the kernel.
     expected.calls.flush += failure_attempt;
@@ -445,8 +445,8 @@ void test_flush_failure_retry(unsigned long failure_attempt) {
         {CallKind::Unmap, fixture.stack_address, SV39_ERR_NOT_MAPPED},
         {CallKind::Flush, fixture.code_address, SV39_OK},
         {CallKind::Flush, fixture.stack_address, SV39_OK},
-        {CallKind::Free, reinterpret_cast<uintptr_t>(first.before.memory.code_page), SV39_OK},
-        {CallKind::Free, reinterpret_cast<uintptr_t>(first.before.memory.stack_page), SV39_OK},
+        {CallKind::Free, reinterpret_cast<uintptr_t>(first.before.memory.pages[0].physical_page), SV39_OK},
+        {CallKind::Free, reinterpret_cast<uintptr_t>(first.before.memory.pages[1].physical_page), SV39_OK},
         {CallKind::Free, l0_pa, SV39_OK},
         {CallKind::Free, l1_pa, SV39_OK}
     }, "flush failure retry event order");
@@ -525,8 +525,8 @@ void test_release_preserves_other_mapping() {
             {CallKind::Unmap, fixture.stack_address, SV39_OK},
             {CallKind::Flush, fixture.code_address, SV39_OK},
             {CallKind::Flush, fixture.stack_address, SV39_OK},
-            {CallKind::Free, reinterpret_cast<uintptr_t>(release.before.memory.code_page), SV39_OK},
-            {CallKind::Free, reinterpret_cast<uintptr_t>(release.before.memory.stack_page), SV39_OK}
+            {CallKind::Free, reinterpret_cast<uintptr_t>(release.before.memory.pages[0].physical_page), SV39_OK},
+            {CallKind::Free, reinterpret_cast<uintptr_t>(release.before.memory.pages[1].physical_page), SV39_OK}
         },
         "H7 release event order");
     require_equal(sv39_unmap_page(fixture.root, other_va),

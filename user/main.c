@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 static volatile unsigned long counter = 7;
-static volatile unsigned char buffer[32];
+static volatile unsigned char buffer[4096 + 32];
 static char data_message[] = "data OK\n";
 
 static void fail(void) {
@@ -17,11 +17,11 @@ int main(void) {
     if (counter != 7) {
         fail();
     }
-    for (size_t i = 0; i < 32; ++i) {
+    for (size_t i = 0; i < sizeof(buffer); ++i) {
         if (buffer[i] != 0) {
             fail();
         }
-        buffer[i] = i + 1;
+        buffer[i] = (unsigned char)(i + 1);
     }
     counter = 8;
     data_message[0] = 'D';
@@ -51,8 +51,8 @@ int main(void) {
         fail();
     }
 
-    for (size_t i = 0; i < 32; ++i) {
-        if (buffer[i] != i + 1) {
+    for (size_t i = 0; i < sizeof(buffer); ++i) {
+        if (buffer[i] != (unsigned char)(i + 1)) {
             fail();
         }
     }
