@@ -1,6 +1,6 @@
 # RISC-V与操作系统学习资料
 
-更新：2026-10-28。本目录沿用仓库已有名称`docs_from_riscv/`。
+更新：2026-10-30。本目录沿用仓库已有名称`docs_from_riscv/`。
 
 ## rCore章节总结与当前机制
 
@@ -19,10 +19,16 @@ rCore用于补充具体概念，不自动进入第五章；最新状态以学习
 | --- | --- |
 | [USER_ELF_LEARNING.md](USER_ELF_LEARNING.md) | **ELF统一复习入口**：当前全路径、概念问答、作者原答与修正；旧解析资料折叠保留 |
 | [USER_ELF_LOADING.md](USER_ELF_LOADING.md) | 已完成的受限ELF装载任务与验收历史；日常复习看上一份总结即可 |
-| [TINYOS_EVOLUTION.md](TINYOS_EVOLUTION.md) | 当前受限ELF装载模块边界任务、已完成的内存C++迁移与问答及后续规划 |
+| [TinyOS批次索引](tinyos/README.md) | 按完整批次查找任务、实现、验证和原答修正；每批一份独立文档 |
+| [BATCH07：安全写回用户内存](tinyos/BATCH07_COPY_TO_USER.md) | **当前任务**：`user_copy_to` 与固定8字节原始时间GET_TIME；完整接口/不变量/分级验收已交付，待作者实现 |
+| [BATCH06：多页数据/BSS](tinyos/BATCH06_MULTI_PAGE_DATA.md) | **最近完成**：有界页集合与跨页装载、70个宿主场景和真实QEMU通过，三题原答与修正已归档 |
+| [BATCH05：ELF装载模块与布局配置](tinyos/BATCH05_ELF_LOADER.md) | 已归档：公开接口、布局检查、启动接线、验证及三题审查 |
+| [TINYOS_EVOLUTION.md](TINYOS_EVOLUTION.md) | 总路线图、完成状态和已知限制；过程细节移至各批次文档 |
 | [CPP_STANDARD_LIBRARY.md](CPP_STANDARD_LIBRARY.md) | C++标准库基础支持接入：目标组件、工具链约束、验收与后续实际结果 |
 
 rCore子项目的成功不会自动修复TinyOS主线。两套实现与验证记录分别保留。
+
+后续每个完整的TinyOS批次使用`tinyos/BATCHnn_TOPIC.md`，在同一文件中持续记录和修订，不把不同批次的详细过程堆回总路线图。
 
 ## 规范及其他资料
 

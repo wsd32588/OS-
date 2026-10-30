@@ -1,6 +1,55 @@
 # TinyOS 项目记忆
 
-最后更新：2026-10-29
+最后更新：2026-10-30
+
+## Git进度保存（2026-10-30）
+
+作者本轮明确要求保存到Git并推送GitHub，授权本次提交/推送。代码与测试提交为36f7b5b（Support bounded multi-page user memory and wire ELF loading），20文件，包含B05启动接线/旧prepare删除和B06多页装载、页集合释放、任务接管及宿主适配。仅额外去掉boot_stages.c一处空白行尾空格，无新功能代写。批次独立文档、索引、B07完整任务及协作记录另作文档提交；B07仍未实现。
+
+本次make -B -j4无警告，make test共70个具体PASS+1汇总，QEMU正常Hello/Data OK/exit各一次，退出后2次S timer，无fail/fault/release错误，124为限时结束。起始远端main=9b07feb，与本地相同；只做正常推送，不强推/变基/清理。验证日志在.cache/git-checkpoint-2026-10-30/，推送结果以该目录后续记录及Git远端核对为准，不能把下方历史“未提交/推送”当当前状态。
+
+## 当前BATCH07任务已交付：安全写回用户内存（2026-10-30）
+
+完整任务在docs_from_riscv/tinyos/BATCH07_COPY_TO_USER.md，待作者亲写核心。已完整阅读约定/记忆/B06/路线并核对真实源码和git status，内部子代理只读设计审查。选user_copy_to/tinyos::copy_writable_user，逐页V/R/W/U检查，经query返回的含偏移PA写入；const root仍借用。零长度先成功；非零NULL、溢出、非canonical及跨canonical半区提前拒绝。后页失败允许合法前缀，结果整体不可用；无alloc/map/flush/所有权变更。
+
+GET_TIME=6，a0目标VA，复制局部uint64_t的8字节原始time计数，成功0/失败-1；timer只公开既有读取的窄入口，用户void*包装支持未对齐字节缓冲区。作者先栈采样，sleep后先完成旧buffer模式核对，再复用原buffer在真实页界前3字节做3+5输出/逐字节还原/保护值检查，后值更大；代码页目标拒绝，Time OK及原Hello/Data OK/exit保留。P0由协作者承担少量宿主、真实QEMU及6页回收；P1/P2均选做，不追加庞大矩阵。无独立root/堆/时间换算/rCore第五章。
+
+本轮仅交付任务/索引/路线/简短记忆，未改产品或测试、未运行新构建/QEMU；最近已通过的功能验证仍为下方B06。文档自检与源码/暂存区保持核对见.cache/batch07-task-preparation/。保留全部既有未提交改动，不clean/stage/commit/push或创建worktree。B06功能与理解归档已完整收尾，不再要求重答；此前局部代改授权不扩为B07整批代写。
+
+## BATCH06已完成：多页数据/BSS与有界页集合（2026-10-30）
+
+2026-10-30三题作者原答/审查/修正版已归档BATCH06，理解收尾完成。Q1认可不同VA可共享PA及VA连续不保证PA连续，补共享映射与重复拥有差别；Q2总复制4113/段内补零4116正确，按页为(4096,0)/(17,4079)/(0,37)，第三页段外4059由PMM清零；Q3修正为保count/全部VA支持重试，成功free后清PA指针防旧归属重复free，物理页正常复用不是问题；4内容+L0/L1=6，root保留。索引/路线已同步。仅归档文档，未改功能或重跑已通过测试。
+
+作者明确要求归档后新建同项目对话开始下一批。交接重点：先读AGENT.MD/本文件/BATCH06与路线，核对git status和真实源码；B06不再留待答问题。下一批先选择一个自然衔接的概念，完整交付独立BATCH07任务文档、接口/不变量/P0与可观察结果，作者写核心，协作者审查和例行验证；不要自动代写完整功能、扩展历史矩阵或继续rCore第五章。当前多项产品/测试/文档未提交，保留，不自动clean/stage/commit/push，不复制旧分支覆盖工作区。下文为实现和历史审查记录。
+
+2026-10-30作者授权剩余修正后，B06功能与P0全部通过，待三题理解收尾，未自动推进新批。保留作者BasicPageRange<Tag>、Phys/VirtPageRange和PageIter，PageRange兼容虚拟别名；仅VA检查canonical半区，release分别验证VA和跳过null PA的物理范围。loader先限data<=14，再构范围/计划，修全部提交与有效回滚前缀；find_page只查合法页VA的描述，sched查floor(entry)/floor(SP-1)及PA存活后接管。作者memset已补；协作者将buffer扩4096+32、sizeof遍历/字节截断，解除数据BSS单页ASSERT。保留显式释放、count/全部VA到最终成功，free成功清实际PA，root借用。
+
+make -B -j4无警告，ELF无未解析/init-fini数组；make test70个具体PASS+1汇总，原H/D/copy及快照/事件不削弱，新增多页free失败重试/PA重复/数量尾部/纯查找等6组及PA跨2^55范围。正式QEMU默认Hello/Data OK/exit和之后两tick正常，124为timeout；RX0x282、RW filesz0x11 memsz0x1038。临时真实QEMU确认4内容+2表=6页全部退出回收/root/satp保留；不同起点交叠/total17均0分配拒绝且状态不变；filesz4113 memsz8229强制分隔PA逐字节/BSS正确；独立第四flush失败实际6alloc/8flush后全映射撤销且root/页数/输出不变。正式/探针哈希一致，产品和测试独立只读复核通过。
+
+证据.cache/batch06-finish-3l2q__dw/（正式构建/运行/改前备份）、.cache/batch06-host-{tests.log,cases.log,results.json}、.cache/batch06-qemu-jyj88p7r/（原P0及独立rollback脚本/日志/结果）。详情和三题写BATCH06，索引/路线已同步。临时文件探针用已解析布局，默认才完整ELF解析与U执行；QEMU脚本SIGTERM返回0非客体关机。保留loader回滚自身再次失败历史局部归属限制，无堆/独立root/新事务/提交推送。以下为完成前历史检查。
+
+2026-10-30集中复查：PageIter/区间互斥/引用写回/逐页复制已接入；loader仍误拒空输出、filesz单页限制、count未留2槽、提交缺VA/PA、回滚仅前三项；release空root提前拒绝/合法VA谓词反向/缺PA去重；find_page查MMU及PA或匹配且缺边界，sched成功判失败且未floor。make -j4编译后链接缺memset（现仅memcpy），loader另缺pages初始化警告；user/main和user.ld跨页演示待改。隔离真实PMM/VM探针确认空输出拒绝、绕过错误count条件后成功描述无记录、第四flush失败残留映射且指向可立刻复用的已释放PA、未拥有VA的PA别名误查、正常和空释放均失败。仅临时替换fence.i并用flush桩，不代表硬件验证；正式源码哈希不变。独立只读审查一致，证据.cache/batch06-current-review-5gbdzb_i/，详情更新BATCH06；未QEMU/整套旧fixture测试/提交。以下段落为较早阶段记录。
+
+作者随后授权选择address.hpp精简方案。已保留原Addr/PageNum，局部整理PageRange：去未用sizeof模板/迭代器（作者检查期间将end改_end，按最新快照改）；新增非空checked try_from_bytes、范围有效性、span互斥入口与数组转发。拒绝跨canonical半区/上界不可表示，失败输出保持；空span可成功、空区间拒绝。test_vm新增有意义边界组，独立真实PMM/VM宿主回归和目标constexpr+vm/user_memory语法检查均0无警告，独立审查通过。证据.cache/address-range-simplify-vm3gbvl_/。只改address.hpp及对应test_vm和文档，release主体未改，接入工厂与其它B06修改仍由作者继续；未全仓/QEMU/提交。
+
+当前阶段审查：作者已改user_memory.h/.cpp，单文件目标语法通过；仅检查该范围，其他调用方/旧tests待后续适配。release入口遍历全部16并拒绝null PA，空对象/未用尾部/重试都失败；仍data_enabled和2/3长度忽略page_count；PA去重误比VA且只看前三项，缺全体VA/count校验；find_page仍仅声明。后续阶段顺序/成功free清成员正确。临时宿主计数桩复现空/4页/重试均-1，满16项仅free3就清描述；证据.cache/batch06-release-review-m7cqjfi5/，不是MMU运行验证。独立只读审查一致，未代改功能或跑全仓/QEMU。任务文档状态已改实现中。
+
+作者要求开始下一批，已新建docs_from_riscv/tinyos/BATCH06_MULTI_PAGE_DATA.md，按新规则单批记录，未代写实现。范围：代码/栈仍1页、2LOAD/共享root/静态任务，数据/BSS支持多页；UserMemory改root+page_count+16个UserMemoryPage{VA,PA}，移除旧七字段不叠兼容状态。新增只读user_memory_find_page供C调度创建前确认entry页和(sp-1)页，原显式接管/清源保持。
+loader先计算data ceil页数与total<=16，checked整页区间/上界/栈顶并检查全区间互斥，后逐页分配/复制/map/flush，保留attempted/mapped和外部注入边界。纯BSS页src_off停在file_offset+filesz，避免越出镜像。release先全部归属检查，再分阶段操作，成功free清PA，失败保留原数量/所有VA，不压缩，整体成功才清描述；无析构/堆/独立root。
+作者修改三处核心/头、sched创建检查、user.ld数据断言及user/main跨页buffer；明确unsigned char写读期望都需截断。旧测试约有大量字段访问，fixtures/快照与场景适配由协作者承担，不让作者再写历史矩阵。P0提前列明构建宿主、默认BSS2页实际运行6页回收、区间交叠/容量0分配拒绝、后续数据页free失败重试、临时跨页有初值数据复制。独立只读设计审查确认。仅更新任务/索引/路线，无新源码或验证结果；旧回滚自身失败限制保留。
+
+## 文档组织改为每个完整批次一份文件（2026-10-29）
+
+作者明确要求拆开过长的总记录，以后每个完整批次独立记录和修改。本次只整理文档，将TINYOS_EVOLUTION.md原五批完整内容迁到docs_from_riscv/tinyos/：BATCH01_CPP_MODULE.md、BATCH02_PMM.md、BATCH03_ADDRESS_PAGE_TABLE.md、BATCH04_USER_MEMORY.md、BATCH05_ELF_LOADER.md；编号独立于rCore。最新B05的接口、过程、P0、原答和修正版以该文件为准。
+TINYOS_EVOLUTION.md缩为路线图/状态/限制，tinyos/README.md为批次导航，学习目录README同步。AGENT.MD已写入新约定；历史条目中“集中原总文档”的说法仅说明当时组织方式，当前详情按本段映射查询。未来B06待选定范围后新建，同一批的小修正只更新原批次文件；不创建空任务模板或代开新功能。原五批内容、九条原答和证据目录迁移保留，相对链接随目录调整；标准库与ELF基础主题保持独立。
+整理后总路线635行缩为95行，九条原答与九个证据目录保真、本地链接及文档空白检查通过，源码哈希无变化；独立只读审查一致。迁移前副本与核对记录在.cache/batch-docs-split-4ca094_6/；只整理文档，未运行内核测试或提交。请求打开BATCH05，应用返回queued，未据此确认面板已显示。
+
+## 受限ELF装载模块边界已验收（2026-10-29）
+
+作者已完成boot_stages/boot_private接线并删除旧user_prepare.cpp，提供正常运行输出。独立只读审查无阻塞；协作者正式make -B和make test均0无警告，默认QEMU正常yield/R/sleep/XHello/Data OK/exit且退出后2次S timer，124为限时。最终内核无未解析、新C入口存在旧prepare符号消失，loader无init/fini数组，MM无boot私有依赖。
+一次临时QEMU合并剩余P0：stack=code拒绝时0分配，完整root/既有内核映射/页数/out七字段不变；仅改栈0x40005000，旧栈未映射、新栈精确V/R/W/U/A/D且全零，初始SP0x40006000、真实首次U syscall SP0x40005fc0；消耗5页，正常退出后3用户映射移除、描述空、5页恢复、完整root恢复且仍活动，之后2次S timer。临时QEMU由脚本8秒SIGTERM停止，返回0不等于客体关机；正式基线单独跑过。
+证据.cache/loader-boundary-final-vi8uv9x0/含正式日志/两类结果/源码哈希/临时脚本；首份临时副本漏freestanding的构建错误只修复制配置。正式源哈希未变，无新产品代码/清理/提交，旧回滚自身失败限制仍保留。TINYOS_EVOLUTION.md和索引已更新最终状态，本批功能梳理完成，未自动推进新功能。
+本批最后三题原答/审查/修正版已归档docs_from_riscv/tinyos/BATCH05_ELF_LOADER.md：作者将栈视作未用时仅VA，已说明当前装载即分配映射物理页，SP变化与区域基址不同；栈由启动指定初始SP，代码/data与ELF固定VA及链接依赖有关，配置不做重定位；引用不执行校验，非空/对象有效性约定与内容校验不同；boot管布局策略，loader管验证与机制，便于改变配置和复用。实现、P0及理解收尾完成，下一步待作者安排。
 
 ## Git进度保存前复核（2026-10-29）
 
