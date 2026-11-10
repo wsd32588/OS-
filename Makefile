@@ -9,13 +9,14 @@ CMAKE ?= cmake
 CTEST ?= ctest
 TEST_BUILD_DIR ?= test/build/cmake
 SYNC_DEST ?= /mnt/d/PROJECTS/C/tinyos
+OPTIMIZATION ?= -O0
 
 ARCH_FLAGS = -march=rv64imac_zicsr_zifencei \
              -mabi=lp64 \
              -mcmodel=medany \
              -mno-relax
 
-CFLAGS = -Wall -Wextra -O0 -g \
+CFLAGS = -Wall -Wextra $(OPTIMIZATION) -g \
          -ffreestanding \
          -fno-stack-protector \
          -fno-pie \
@@ -23,7 +24,7 @@ CFLAGS = -Wall -Wextra -O0 -g \
          $(ARCH_FLAGS)
 
 CXXFLAGS = --target=riscv64-unknown-elf \
-           -std=c++20 -Wall -Wextra -Wpedantic -O0 -g \
+           -std=c++20 -Wall -Wextra -Wpedantic $(OPTIMIZATION) -g \
            -ffreestanding \
            -fno-exceptions -fno-rtti -fno-threadsafe-statics \
            -fno-stack-protector -fno-pie \
@@ -40,7 +41,7 @@ USER_OBJS = \
     $(USER_BUILD_DIR)/syscall.o \
     $(USER_BUILD_DIR)/main.o
 
-USER_CFLAGS = $(ARCH_FLAGS) -std=c11 -Wall -Wextra -O0 -g \
+USER_CFLAGS = $(ARCH_FLAGS) -std=c11 -Wall -Wextra $(OPTIMIZATION) -g \
     -ffreestanding -fno-builtin -fno-stack-protector -fno-pie \
     -fno-unwind-tables -fno-asynchronous-unwind-tables \
     -msmall-data-limit=0 -Iinclude -Iuser
@@ -54,16 +55,22 @@ OBJS = \
     kernel/mm/pmm.o \
 	kernel/mm/user_loader.o \
     kernel/arch/riscv/trap_entry.o \
+    kernel/arch/riscv/task_context.o \
     kernel/task/trap.o \
     kernel/arch/riscv/sbi.o \
+    kernel/arch/riscv/panic.o \
     kernel/task/timer.o \
     kernel/task/sched.o \
     kernel/mm/vm.o \
     kernel/arch/riscv/vm_arch.o \
+	kernel/runtime/cpp_runtime.o \
     kernel/user/user_entry.o \
     kernel/task/syscall.o \
     kernel/mm/user_memory.o \
     kernel/mm/user_access.o \
+	kernel/mm/user_address_space.o \
+	kernel/process/process.o \
+	kernel/process/spawn.o \
     kernel/user/user_image.o \
     kernel/user/user_elf.o \
     lib/string.o \

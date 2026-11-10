@@ -1,6 +1,5 @@
-#include "user/user_image.h"
+#include "user/user_image.hpp"
 
-extern "C" {
 int user_image_load_segment(
     void *destination,
     size_t destination_capacity,
@@ -10,17 +9,7 @@ int user_image_load_segment(
     size_t file_size,
     size_t memory_size
 ) {
-    if(
-        destination == NULL &&
-        image == NULL &&
-        destination_capacity == 0 &&
-        image_size == 0 &&
-        file_size == 0 &&
-        file_offset == 0 &&
-        memory_size == 0
-    ) {
-        return 0;
-    } else if (
+    if (
         (memory_size != 0 && destination == NULL) ||
         (image_size != 0 && image == NULL) ||
         file_size > memory_size ||
@@ -43,5 +32,4 @@ int user_image_load_segment(
     }
 
     return USER_IMAGE_OK;
-}
 }

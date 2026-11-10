@@ -19,6 +19,7 @@ add_library(tinyos_test_kernel STATIC
     "${TINYOS_SOURCE_DIR}/kernel/mm/pmm.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/vm.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_memory.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/mm/user_address_space.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_access.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/user/user_image.cpp"
 )
@@ -56,6 +57,7 @@ target_link_libraries(tinyos_tests PRIVATE tinyos_test_kernel)
 target_link_options(tinyos_tests PRIVATE
     "LINKER:--wrap=sv39_unmap_page"
     "LINKER:--wrap=pmm_free_page"
+    "LINKER:--wrap=pmm_alloc_page"
 )
 
 # PMM has global state: keep all cases in one sequential test process.

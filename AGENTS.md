@@ -2,6 +2,19 @@
 
 开始处理本仓库前，必须完整阅读并遵守 `AGENT.MD`，同时阅读 `MEMORY.MD` 了解当前实现、验证结果和待办事项。
 
+## WSL连接代理失败：NAT与localhost地址（2026-11-10）
+
+- 用户通过Windows侧Codex CLI排查并报告：当时Codex后端在WSL中，使用代理`127.0.0.1:7890`，
+  Clash在Windows运行；NAT模式下WSL的该地址指向自身，出现连接拒绝。改用mirrored网络后，原代理地址恢复连通。
+- 微软文档明确说明mirrored允许Linux通过`127.0.0.1`连接Windows服务；默认NAT下通常须使用Windows主机地址。
+  参考：[WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking#mirrored-mode-networking)。
+  本记录的本机排查/修复结果来自用户报告，协作者仅核对了文档行为，未独立重放故障或修改网络配置。
+- 若再次发生聊天/API连接失败，先核对实际后端在Windows还是WSL、当前网络模式、代理目的地址及服务监听位置。
+  Windows侧能连接不能单独证明WSL后端也能连接；不要默认归因为升级或用户操作。
+- 用户报告备份中原`.wslconfig`的修改时间为当天17:21:57，早于18:44的修复；时间戳不能确定写入者或具体修改项。
+  后端变化、重启加载配置、TUN/转发停止等仍是待证实的触发原因。
+- 此网络故障与下节命令启动前的`arg0`目录丢失是不同问题；剪贴板图片临时文件不存在也不能单独证明网络故障。
+
 ## Codex Desktop / WSL 命令执行故障
 
 - 如果工具在命令执行前报 `Failed to create unified exec process: No such file or directory (os error 2)`，但手动 WSL 终端正常，先检查活动后端的 `arg0` 辅助目录；不要直接认定 Bash、项目目录或 WSL 安装损坏。

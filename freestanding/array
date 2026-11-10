@@ -1,15 +1,15 @@
 #pragma once
 #include <cstddef>
 
-namespace {}
-template <typename T, size_t N>
-struct Array {
-    static_assert(N > 0, "Array of size 0 is not supported in kernel core!");
+namespace std {
 
-    // 保持公开以支持聚合初始化：Array<int, 3> arr{1, 2, 3};
+template <typename T, size_t N>
+struct array {
+    static_assert(N > 0, "std::array of size 0 is not supported in kernel core!");
+
+    // 保持公开以支持聚合初始化：array<int, 3> arr{1, 2, 3};
     T _data[N];
 
-    // --- 迭代器类型定义 ---
     using value_type      = T;
     using size_type       = size_t;
     using difference_type = ptrdiff_t;
@@ -20,7 +20,6 @@ struct Array {
     using iterator        = T*;
     using const_iterator  = const T*;
 
-    // --- 迭代器支持 (直接走指针运算，彻底规避 &_data[N] 的 UB 嫌疑) ---
     [[nodiscard]] constexpr iterator begin() noexcept { return _data; }
     [[nodiscard]] constexpr const_iterator begin() const noexcept { return _data; }
     [[nodiscard]] constexpr iterator end() noexcept { return _data + N; }
@@ -29,12 +28,25 @@ struct Array {
     [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return _data; }
     [[nodiscard]] constexpr const_iterator cend() const noexcept { return _data + N; }
 
-    // --- 元素访问 ---
     [[nodiscard]] constexpr reference operator[](size_type index) noexcept {
         return _data[index];
     }
 
     [[nodiscard]] constexpr const_reference operator[](size_type index) const noexcept {
+        return _data[index];
+    }
+
+    [[nodiscard]] constexpr reference at(size_type index) noexcept {
+        if (index >= N) {
+            __builtin_trap();
+        }
+        return _data[index];
+    }
+
+    [[nodiscard]] constexpr const_reference at(size_type index) const noexcept {
+        if (index >= N) {
+            __builtin_trap();
+        }
         return _data[index];
     }
 
@@ -47,15 +59,30 @@ struct Array {
     [[nodiscard]] constexpr pointer data() noexcept { return _data; }
     [[nodiscard]] constexpr const_pointer data() const noexcept { return _data; }
 
-    // --- 容量查询 ---
     [[nodiscard]] static constexpr size_type size() noexcept { return N; }
     [[nodiscard]] static constexpr size_type max_size() noexcept { return N; }
     [[nodiscard]] static constexpr bool empty() noexcept { return false; }
 
-    // --- 全量填充 (支持编译期 constexpr 展开) ---
     constexpr void fill(const T& value) {
         for (size_type i = 0; i < N; ++i) {
             _data[i] = value;
         }
     }
 };
+
+template <typename T, size_t N>
+constexpr bool operator==(const array<T, N>& left, const array<T, N>& right) {
+    for (size_t i = 0; i < N; ++i) {
+        if (!(left[i] == right[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <typename T, size_t N>
+constexpr bool operator!=(const array<T, N>& left, const array<T, N>& right) {
+    return !(left == right);
+}
+
+} // namespace std

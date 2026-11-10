@@ -1,9 +1,136 @@
 # TinyOS：C++ 标准库基础支持
 
-更新：2026-10-27。状态：手写五头的当前基础子集已通过验证，返回地址/页表改造；尚未安装、构建或接入现成目标标准库。
+更新：2026-11-04。最小静态对象运行时已完成实际构建、宿主回归、正常QEMU与受控析构QEMU验证；BATCH09已收尾，BATCH10进行中。尚未接入现成目标标准库或完整C++运行时。
+
+下文2026-10-27的工具链/五头任务与验收均保留历史时点；之后地址、页表和装载器已实际使用C++。2026-10-31工作区另有array/limits/其他兼容头和panic修改，未因本次运行时准备而重新审查或验收，不能用旧五头结论覆盖最新草稿。
 
 本文件单独记录标准库选型、工具链接线、可用组件、运行时边界和实际验收结果。
 地址/PTE/页表的功能改造继续记录在 [TINYOS_EVOLUTION.md](TINYOS_EVOLUTION.md)，不在两处重复维护。
+
+2026-11-04作者要求先试O3再精简。runtime头现为include/runtime/cpp_runtime.hpp，注册容量留在实现；已删除_is_ready恒假条件与finalize零次循环前的重复早退，保留防重复初始化及ABI规则。目标O3构建、正式双用户回归与O3受控构造/析构探针均通过；默认仍O0。完整改动、先后顺序及证据统一记录在[BATCH10前置整理](tinyos/BATCH10_USER_EXIT_RESULT.md#作者要求的前置整理o3头文件边界与重复检查2026-11-04)，下文带旧日期的接口/状态保留历史语境。
+
+## 当前插入试验：静态对象生命周期（2026-10-31）
+
+### 实际复验与解释入口（2026-11-01）
+
+此前协作者只是读代码、解释方案，没有检测作者最后加入的一次性保护，也没有执行析构试验；不能把作者“没问题”当作实测结论。作者追问后，本次已实际执行以下复验，未改正式产品/测试源码：
+
+- `make -B -j4`返回0，无警告，最终ELF无未解析符号；runtime和kernel_main的C符号正确，init表处在rodata映射及kernel_end之前。
+- 原 `make test CTEST='ctest --verbose'`返回0，75个具体运行组+1汇总、CTest 1/1通过，无警告；runtime未混入宿主CRT。
+- 正式 `timeout 8s make qemu`出现D/count=1、Hello TinyOS、Time OK、Hello from user、Data OK和exit，退出后两次S timer，无fail/fault/release错误；124为限时观察。
+- 一个受控临时副本保留正式runtime/头/linker/Makefile与entry初始化，临时替换boot/main.cpp为生命周期探针，只在entry最终finalize后加只读trace检查。真实RISC-V对象与QEMU执行，不用宿主C++运行时替代。
+
+| 受控检查 | 实测结果 |
+| --- | --- |
+| 同TU两个不同全局对象 | 构造trace AB、对象外计数2；init_array只有8字节/一个入口，表项数不等于对象数 |
+| 启动参数 | 构造器主动破坏a0/a1后，main仍收到hart=0及有效DTB魔数d00dfeed，entry保存恢复正确 |
+| 重复初始化 | 再调init返回-1，trace仍AB、计数仍2，不重构任何对象 |
+| 普通局部对象 | 进入作用域记录L，离开记录l，trace正常追加Ll |
+| 无效注册 | NULL回调返回-1且trace不变 |
+| 混合DSO登记 | x属于A、y属于B、z属于A；finalize(A)执行zx，重复无变化，finalize(B)只执行y |
+| 真正全局析构 | finalize(NULL)执行编译器自动登记的ba；再次调用无变化 |
+| entry终止入口 | 临时main受控返回，entry再次调用finalize(NULL)，trace仍ABLlzxyba，无重复析构 |
+
+对象反汇编确认自动__cxa_atexit/__dso_handle注册；临时ELF无未解析，构建无警告。59个正式产品源/头/配置哈希保持。短启动探针不启动PMM/分页/调度，用于单独验证对象生命周期；正常系统行为由前面的正式QEMU覆盖。短启动QEMU由脚本3秒后SIGTERM停止，返回0不是客体关机。
+
+证据在仓库根 `.cache/cpp-runtime-verify-2026-11-01/`：build/host/qemu-normal日志及结果JSON、ELF符号/节/布局检查；`qemu/probe_main.cpp`是可读探针，`qemu/run_probe.py`可重跑，`qemu/results.json`和qemu.log保存实际逐项结果。正式源码和暂存区保持核对写入final-results.json。
+
+当前限制明确保留：注册表64槽按累计成功登记计，执行后仅清function，不复用槽位；不是同时存活对象数上限。没有验证满表、终止期间新登记、完整重入/并发、局部static保护、TLS/异常/堆或跨翻译单元依赖。本轮非NULL DSO筛选已满足原P0的一条筛选/拒绝验证，不扩故障矩阵。旧_is_ready冗余状态已于2026-11-04删除，实际防重复仍由s_init_started完成。手工调用无效注册必须处理返回值，正常编译器不会生成NULL析构回调。
+
+正式main中的Test仍是平凡析构，D/count输出本身只说明全局构造；析构支持结论来自上述带非平凡析构的受控目标试验。不为了触发析构去结束正常内核或在用户exit销毁全局服务。cpp_runtime_fini这一自定义中转已按作者选择删除，受控返回后由entry直接调用__cxa_finalize(NULL)；先前提到该中转的任务文字保留为当时方案，不再是必须实现的接口。
+
+### 机制梳理
+
+编译器生成的启动入口构造对象后，调用__cxa_atexit登记三元组function/object/dso。function是可调用的析构入口，object是要传给它的对象地址，dso是所属映像/模块的不透明标识，不是类名，也不是对象值。当前内核没有动态加载共享库，编译器将__dso_handle符号地址作为同一映像的分组标识；它的数据初值为nullptr不等于传入的标识为NULL。
+
+逆序按实际登记顺序，而非按类名、对象内容或init表项数。示例先登记x/A、y/B、z/A，finalize(A)从最后向前：调用z，跳过y，调用x；不能遇到B就break。finalize(NULL)选所有尚未执行项。对每个命中项，先复制记录并清空原function，再调用复制出来的function(object)；后续遍历遇NULL便跳过，所以重复调用不会再次析构，同一次调用中的简单递归也不会重新调用当前项。它不承诺完整处理析构中新增登记或并发协议。
+
+析构表示结束对象生命周期、执行它自己的清理逻辑，不自动等同于归还对象所在物理页。静态对象存储仍属于内核映像；若析构函数管理其他资源，具体归还由该函数实现。当前两个测试对象只记录trace，正常系统main不返回，内核全局对象继续存活。
+
+### 作者首次构造输出（历史，同日）
+
+作者将boot/main改为.cpp，给kernel_main补C链接，接入runtime对象与entry初始化调用，并报告 `D0x0000000000000001` 后正常出现 `Hello TinyOS!`。静态源码核对中Test对象已在函数外，构造设置value='D'、成员volatile count递增；该输出表明全局构造执行后进入了kernel_main。先前“数字1不显示”是把数值强转char后发出控制字符，现改用uart_put_hex观察。彼时未独立重跑；成员count每次构造归零，不能单独证明只执行一次，之后的实际复验已使用对象外计数并检查二次init拒绝。
+
+作者决定先亲手试构造函数、析构函数与init_array，再考虑BATCH08。这里提供完整边界与观察目标，不代写产品代码。C++已真实用于PMM、页表、loader等；本次补的是其中尚缺的静态对象启动/终止支持，不是首次让C++进入内核。
+
+### 先分清三种路径
+
+| 路径 | 谁触发 | 本次需要补什么 |
+| --- | --- | --- |
+| 普通局部对象构造/正常作用域析构 | 编译器生成直接调用 | 已可用，保留一个小例子观察即可 |
+| 命名空间作用域对象/类静态数据成员的动态初始化 | 编译器生成启动入口，启动代码调用 | 显式收集并遍历init_array |
+| 静态存储对象的非平凡析构 | 构造成功后的注册与受控终止 | 当前目标的__cxa_atexit / __dso_handle / __cxa_finalize路径 |
+
+constinit省去对象的动态初始化，但非平凡析构仍可能需要init_array入口执行析构注册，不能据constinit断言无需启动表。函数内static也有静态存储期，但通常在首次经过声明时动态初始化，不由启动表统一构造，本轮不验收该路径。局部非static对象的正常析构、全局终止析构、异常展开、被强制结束任务的栈清理不是同一个机制；本次不启用异常、线程安全局部static或任务栈展开。
+
+### 真实目标对象探针
+
+已按当前Clang/RV64/lp64/freestanding和禁异常/RTTI/线程安全static参数，在隔离目录编译一个全局对象、普通局部对象和局部static的例子：
+
+- 默认及显式-fuse-cxa-atexit均生成.init_array，并引用__cxa_atexit和__dso_handle；未生成全局析构函数的.fini_array列表。
+- -fno-use-cxa-atexit改为引用atexit，仍不是消除运行时依赖的开关。
+- 当前生成的注册调用没有检查__cxa_atexit返回值。不能只在表满时返回失败、随后让启动端继续假装全部析构已登记。
+- 另一个constinit+非平凡析构探针仍生成.init_array和__cxa_atexit，确认“常量初始化对象仍可能需要启动时登记析构”。对应constinit-probe.cpp及日志同目录。
+
+证据 `.cache/cpp-runtime-preparation-2026-10-31/`（仓库根）：probe.cpp、三种对象/节/未解析符号/反汇编及results.json。这里只是目标对象检查，没有接入正式内核、运行构造器或验证启动。
+
+### 作者实现的最小范围
+
+建议新增 `kernel/runtime/cpp_runtime.cpp` 与 `include/runtime/cpp_runtime.h`；公开C入口 `int cpp_runtime_init(void)` 和 `void cpp_runtime_fini(void)`，供entry/受控试验调用。也可沿用作者自定的同职责文件，不搬迁已有模块。init成功0、失败非0；初始化只允许一次，重复调用拒绝且不重复构造。
+
+本次可以分两段写，完成后集中审查：
+
+1. **启动构造**：在linker.ld显式收集并KEEP(.init_array和.init_array.*)，以8字节对齐的起止符号描述函数指针区间。需要优先级子节时用SORT_BY_INIT_PRIORITY收集子节，再收集普通项；不把跨翻译单元的未约定顺序作为模块依赖。启动端按表正序调用每个入口一次，不能按“每个入口等于一个对象”计数，一个编译单元入口可能构造多个对象。
+2. **静态析构注册/执行**：保持当前默认ABI，提供唯一C链接数据符号__dso_handle，以及实际有作用的__cxa_atexit和__cxa_finalize。以固定容量记录回调/对象/DSO标识，无堆；有效注册成功0，失败非0，禁止空桩。finalize按实际注册逆序执行；参数NULL选全部，非NULL只选匹配DSO；执行前标记已处理，重复finalize不得重复析构。cpp_runtime_fini调用__cxa_finalize(NULL)，终止后不再使用已销毁对象。
+
+ABI签名供核对，不是实现：
+
+```cpp
+extern "C" int __cxa_atexit(void (*function)(void*), void* object, void* dso);
+extern "C" void __cxa_finalize(void* dso);
+```
+
+注册表和运行时自己的状态必须能静态/常量初始化，避免“运行构造表需要先构造注册表”的循环。固定容量本次可取32，边界明确返回失败；编译器不会自动传播注册失败，启动端须能发现失败并停止进入kernel_main，或者在注册失败处明确诊断并停机。不能静默漏掉全局析构。此试验限单hart、受控无并发注册/终止，不引入锁、TLS、动态库加载或完整libc。
+
+### 启动接线中最容易出错的部分
+
+- 当前entry仅设置sp后call kernel_main，没有显式清BSS。linker.ld的BSS包含16KiB boot stack。若要补BSS清零，必须在任何call/栈存储前用无栈汇编完成，再使用boot stack；不能在该栈上的C函数中清整段BSS，把自己的返回地址清掉。当前__bss_start也没有保证8字节对齐，不能直接假设sd步进合法，尾部须正确处理。
+- OpenSBI传来的a0/a1分别是hart ID和DTB地址。新增init调用会改调用者保存寄存器，必须跨调用可靠保存，再恢复传给kernel_main；清BSS的临时寄存器也不能破坏这两个参数。栈保存发生在BSS清零之后，并保持16字节栈对齐。
+- 推荐关系是：无栈清BSS → 建立栈 → 保存启动参数 → cpp_runtime_init → 检查成功并恢复参数 → kernel_main。调用失败走明确停机分支；不要重复清BSS抹掉构造结果。
+- 数组节须放在现有内核映射和__kernel_end之前，例如rodata区域内、__rodata_end计算之前；不能让孤立节落到PMM可分配范围或分页后不可读的位置。构造器入口代码也须位于正常text映射内。
+- kernel_main之前PMM、分页、trap、调度和显式服务初始化尚未完成。首个试验构造器只写静态标记/trace，启动后再观察；不把PMM初始化偷偷搬进全局构造器。跨模块的资源初始化继续使用原boot_stages。
+- 全局析构的受控终止与用户任务exit不同。正式kernel_main启动调度后不返回，不能在用户exit或任意panic时销毁内核全局服务；在临时短启动副本中让试验main受控返回，再运行fini并停机，观察逆序/不重复。正式路径需要保留清楚的终止入口，但不为验收改成自动关机。
+
+本轮不要求通过.fini_array实现全局C++析构，因为当前编译器走注册机制；若作者另试.fini_array，它是另一张终止函数表，必须明确其内容与调用顺序，避免与注册析构重复执行。preinit、旧.ctors/.dtors兼容和完整C运行时不作为本次门槛。现有用户ELF仍禁止init/fini数组，不据此扩成用户C++运行时。
+
+### 可观察结果和分工
+
+作者只写小对象及核心接线，协作者负责必要P0，不追加大矩阵：
+
+| 等级 | 观察目标 | 负责 |
+| --- | --- | --- |
+| P0 | 一个确实生成init_array的全局对象，在kernel_main入口前写出预期标记；普通局部对象离开作用域调用析构；启动hart/DTB参数保持 | 作者写小例子，协作者检查目标ELF/正常QEMU |
+| P0 | 两个同翻译单元静态对象在受控终止时按注册逆序析构各一次；再次finalize不重复；用一条非NULL DSO筛选或满表失败验证实际注册语义 | 协作者临时短启动副本，不要求作者写新框架 |
+| P0 | 完整构建无警告，数组位于映射/PMM边界内，无未解决__cxa/atexit依赖；原75组宿主及正常Time OK/Hello/Data OK/exit保留 | 协作者例行复验，运行时自身不混入宿主crt制造重复__dso_handle |
+| P1/P2 | 更多初始化优先级、局部static、终止时新注册/重入及其他运行时扩展 | 按需求再定，不阻塞本次试验 |
+
+保留Makefile现有Clang目标规则，仅接入新实现/试验对象，不改全仓语言；现有panic和兼容头改动保留但不据此宣称其全部已复验。不clean/stage/commit/push，不提前迁移B08调度或地址空间代码。
+
+参考：[C++ ABI的DSO终止接口](https://itanium-cxx-abi.github.io/cxx-abi/abi.html#dso-dtor-runtime-api)、[GNU ld输入节保留](https://sourceware.org/binutils/docs/ld/Input-Section-Keep.html)、[输入节排序](https://sourceware.org/binutils/docs/ld/Input-Section-Wildcards.html)。实际符号与本机目标对象探针共同判断，构造表和析构注册分开验收。
+
+### 首次草稿集中审查（历史，2026-11-01，彼时尚未接通）
+
+作者已新增runtime头/实现和init_array输出节。构造表的正序遍历方向正确；协作者只读检查并在隔离目录编译/链接，没有代改产品：
+
+- linker定义init_array_start/end，而实现引用__init_array_start/end，名称须统一。实际ld还把 `init_array_end=` 当成输入文件名，报cannot find init_array_end=；赋值写成 `__init_array_end = .;`。通配建议明确分成 `.init_array.*` 与 `.init_array`；第二条KEEP当前漏前导点，但前面的 `.init_array*` 已覆盖普通项，不能误报成完全未收集。
+- __cxa_finalize的声明/定义误为int，应为ABI约定的void。项目自己的cpp_runtime_fini返回int且头/定义一致，可保留，不能与ABI入口混为一谈。
+- __cxa_atexit和__cxa_finalize目前只是返回0的空桩，没有实际登记、按DSO筛选、逆序调用、执行前标记、不重复及失败处理，不能算析构已生效。
+- cpp_runtime_fini引用__fini_array_start/end，但链接器没有这些符号。本次默认Clang走析构注册，最小路径应由fini调用真正的__cxa_finalize(NULL)，不必为这些引用补另一套表。init还须一次性状态保护。
+- Makefile尚未包含runtime对象，entry仍直接调用kernel_main；启动BSS/栈/a0-a1保存、init调用与失败停机尚待作者接线。
+
+__dso_handle的当前nullptr初值本身不是上述阻塞：探针中编译器传的是该唯一符号的地址，不是读取其值后传NULL。保持实际注册/筛选使用同一不透明标识。
+
+当前目标单文件编译成功但有4处空桩未使用参数警告，隔离链接按上述脚本错误失败；未做整仓构建/宿主/QEMU，不把未加入构建图的普通make当运行时验收。证据 `.cache/cpp-runtime-review-2026-11-01/`（仓库根）含对象/诊断/结果和5个正式文件前后哈希，独立只读审查一致。
 
 ## 为什么先补这一层
 

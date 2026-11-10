@@ -4,11 +4,14 @@
 #include "arch/riscv/vm_arch.h"
 #include "drivers/uart.h"
 #include "mm/pmm.h"
+#include "mm/user_address_space.h"
 #include "mm/vm.h"
 #include "task/sched.h"
 #include "task/timer.h"
 #include "user/user_elf.h"
 #include "mm/user_loader.h"
+#include "process/spawn.hpp"
+
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -27,6 +30,20 @@ static void boot_fail(const char *message) {
 
     for (;;) {
         asm volatile("wfi");
+    }
+}
+
+static void release_pending_user_spaces(
+    UserAddressSpace* spaces,
+    size_t space_count
+) {
+    for (size_t i = 0; i < space_count; ++i) {
+        const int result = user_address_space_release(&spaces[i]);
+        if (result != SV39_OK) {
+            uart_puts("User space cleanup failed at index ");
+            uart_put_hex(static_cast<unsigned long>(i));
+            boot_fail("\n");
+        }
     }
 }
 
@@ -262,37 +279,59 @@ void boot_start_user(
         .data_address = DEMO_USER_DATA_ADDRESS
     };
 
-    UserMemory user_memory = {0};
+    if (sched_init(kernel_root) != 0) {
+        boot_fail("Scheduler initialization failed.\n");
+    }
 
-    if (user_memory_load_elf(
-        kernel_root,
-        user_elf_start,
-        elf_size,
-        layout,
-        &memory_layout,
-        &user_memory) != SV39_OK) {
-            boot_fail("Demo user memory setup failed.\n");
+    const int task_a_id = task_create(task_a);
+    if (task_a_id < 0) {
+        boot_fail("Kernel task A creation failed.\n");
+    }
+
+    const int task_b_id = task_create(task_b);
+    if (task_b_id < 0) {
+        boot_fail("Kernel task B creation failed.\n");
+    }
+
+    if (tinyos::configure_builtin_spawn(
+            kernel_root,
+            std::span<const unsigned char>(user_elf_start, elf_size),
+            *layout,
+            memory_layout) != 0) {
+        boot_fail("Builtin spawn configuration failed.\n");
+    }
+
+    constexpr size_t user_task_count = 2;
+    UserAddressSpace spaces[user_task_count]{};
+    for (size_t i = 0; i < user_task_count; ++i) {
+        if (user_address_space_create(kernel_root, &spaces[i]) != SV39_OK) {
+            release_pending_user_spaces(spaces, user_task_count);
+            boot_fail("Demo user address space creation failed.\n");
         }
-    sched_init();
-    int task_a_id = task_create(task_a);
-    int task_b_id = task_create(task_b);
-    int user_task_id = task_create_user(
-        layout->entry_address,
-        memory_layout.stack_address + SV39_PAGE_SIZE,
-        &user_memory
-    );
 
-    if (task_a_id < 0 ||
-        task_b_id < 0 ||
-        user_task_id < 0) {
-        uart_puts("Task creation failed.\n");
-
-        int clean_result = user_memory_release(&user_memory);
-        if (clean_result != SV39_OK) {
-            uart_puts("[FAIL] clean up memory failed");
+        if (user_memory_load_elf(
+            spaces[i].root,
+            user_elf_start,
+            elf_size,
+            layout,
+            &memory_layout,
+            &spaces[i].user_memory) != SV39_OK) {
+            release_pending_user_spaces(spaces, user_task_count);
+            boot_fail("Demo user memory load failed.\n");
         }
-        for (;;) {
-            asm volatile("wfi");
+    }
+
+    for (size_t i = 0; i < user_task_count; ++i) {
+        const int user_task_id = task_create_user(
+            layout->entry_address,
+            memory_layout.stack_address + SV39_PAGE_SIZE,
+            &spaces[i],
+            static_cast<uintptr_t>(i)
+        );
+        if (user_task_id < 0) {
+            // Successful transfers have already cleared their source objects.
+            release_pending_user_spaces(spaces, user_task_count);
+            boot_fail("User task creation failed.\n");
         }
     }
 }

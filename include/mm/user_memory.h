@@ -21,6 +21,8 @@ typedef struct UserMemory {
     UserMemoryPage pages[USER_MEMORY_MAX_PAGE]; //数组记录顺序为：代码页、栈页、数据页0、数据页1……。
 
 #ifdef __cplusplus
+    int validate_pages() const;
+    int validate_mappings() const;
     int release();
 #endif
 } UserMemory;

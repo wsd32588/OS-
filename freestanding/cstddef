@@ -6,5 +6,11 @@ namespace std {
     using size_t = ::size_t;
     using ptrdiff_t = ::ptrdiff_t;
     using nullptr_t = decltype(nullptr);
+    using max_align_t = ::max_align_t;
     enum class byte : unsigned char {};
+
+    template <typename T>
+    constexpr T to_integer(byte value) noexcept {
+        return static_cast<T>(value);
+    }
 }

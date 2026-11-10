@@ -10,4 +10,10 @@ int copy_readable_user (
     VirtAddr source,
     std::span<unsigned char> destination
 );
+
+int copy_writable_user(
+    const Sv39PageTable& root,
+    VirtAddr destination,
+    std::span<const unsigned char> source
+);
 }

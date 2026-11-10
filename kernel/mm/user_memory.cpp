@@ -6,21 +6,13 @@
 #include "mm/address.hpp"
 #include "mm/pmm.h"
 
-int UserMemory::release() {
 
+int UserMemory::validate_pages() const {
     if (page_count > USER_MEMORY_MAX_PAGE) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
-    if (root == nullptr && page_count == 0) {
-        return SV39_OK;
-    }
-
-    if (root == nullptr || page_count == 0) {
-        return SV39_ERR_INVALID_ARGUMENT;
-    }
-
-    std::span<UserMemoryPage> active_pages(pages, page_count);
+    const std::span<const UserMemoryPage> active_pages(pages, page_count);
 
     PageRange ranges[USER_MEMORY_MAX_PAGE]{};
     PhysPageRange physical_ranges[USER_MEMORY_MAX_PAGE]{};
@@ -53,7 +45,24 @@ int UserMemory::release() {
         return SV39_ERR_INVALID_ARGUMENT;
     }
 
+    return SV39_OK;
+}
 
+
+int UserMemory::validate_mappings() const {
+    if (page_count > USER_MEMORY_MAX_PAGE) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    if (root == nullptr && page_count == 0) {
+        return SV39_OK;
+    }
+
+    if (root == nullptr || page_count == 0) {
+        return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    const std::span<const UserMemoryPage> active_pages(pages, page_count);
     for (const UserMemoryPage& page : active_pages) {
         uint64_t mapped_address = 0;
         uint64_t flags = 0;
@@ -80,6 +89,26 @@ int UserMemory::release() {
             return SV39_ERR_INVALID_ARGUMENT;
         }
     }
+
+    return SV39_OK;
+}
+
+int UserMemory::release() {
+    int result = validate_pages();
+    if (result != SV39_OK) {
+        return result;
+    }
+
+    result = validate_mappings();
+    if (result != SV39_OK) {
+        return result;
+    }
+
+    if (page_count == 0) {
+        return SV39_OK;
+    }
+
+    const std::span<UserMemoryPage> active_pages(pages, page_count);
 
     for (const UserMemoryPage& page : active_pages) {
         const int result =

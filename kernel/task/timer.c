@@ -1,16 +1,14 @@
 #include "task/timer.h"
 #include "arch/riscv/sbi.h"
 
-typedef unsigned long u64;
-
 #define TIMER_PREQ 10000000UL
 #define TIMER_INTERVAL TIMER_PREQ
 
 #define SIE_STIE (1UL << 5)
 #define SSTATUS_SIE (1UL << 1)
 
-static inline u64 read_time(void) {
-    u64 value;
+uint64_t timer_read_time(void) {
+    uint64_t value;
 
     asm volatile(
         "csrr %0, time"
@@ -21,7 +19,7 @@ static inline u64 read_time(void) {
 }
 
 void timer_set_next(void) {
-    u64 now = read_time();
+    uint64_t now = timer_read_time();
 
     sbi_set_timer(now + TIMER_INTERVAL);
 }

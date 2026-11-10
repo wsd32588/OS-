@@ -377,6 +377,166 @@ void test_copy_from_last_address() {
     require_equal(query_mapping(fixture.root, UINTPTR_MAX), mapping,
                   "last-address mapping unchanged");
 }
+
+constexpr uint64_t WRITABLE_USER_FLAGS =
+    SV39_PTE_R | SV39_PTE_W | SV39_PTE_U | SV39_PTE_A | SV39_PTE_D;
+
+void remap_access_page(UserAccessFixture &fixture, uintptr_t address,
+                       unsigned char *page, uint64_t flags) {
+    require_equal(sv39_unmap_page(fixture.root, address), SV39_OK,
+                  "remove access-test mapping before permission change");
+    require_equal(sv39_map_page(fixture.root, address,
+        reinterpret_cast<uintptr_t>(page), flags), SV39_OK,
+        "remap access-test page with requested permissions");
+}
+
+void prepare_writable_access(UserAccessFixture &fixture) {
+    remap_access_page(fixture, UserAccessFixture::first_address,
+                      fixture.first_page, WRITABLE_USER_FLAGS);
+    remap_access_page(fixture, UserAccessFixture::second_address,
+                      fixture.second_page, WRITABLE_USER_FLAGS);
+    std::memset(fixture.first_page, BUFFER_GUARD, SV39_PAGE_SIZE);
+    std::memset(fixture.gap_page, BUFFER_GUARD, SV39_PAGE_SIZE);
+    std::memset(fixture.second_page, BUFFER_GUARD, SV39_PAGE_SIZE);
+}
+
+void expect_copy_to_result(const UserAccessFixture &fixture, uintptr_t address,
+                           const void *source, std::size_t length,
+                           int expected_result, const UserAccessState &expected) {
+    require_equal(user_copy_to(fixture.root, address, source, length),
+                  expected_result, "user writeback return value");
+    require_equal(capture_user_access(fixture), expected,
+                  "writeback changes only expected content bytes, preserving all other state");
+}
+
+void test_copy_to_offsets_and_separated_pages() {
+    UserAccessFixture fixture;
+    prepare_writable_access(fixture);
+    require_equal(reinterpret_cast<uintptr_t>(fixture.second_page) -
+                  reinterpret_cast<uintptr_t>(fixture.first_page),
+                  2 * SV39_PAGE_SIZE, "writeback target PAs have an allocated gap");
+
+    const std::array<unsigned char, 10> source{
+        0x7e, 0x11, 0, 0xff, 0x80, 0x22, 0x33, 0x44, 0x55, 0x7f};
+    const auto source_before = source;
+    auto expected = capture_user_access(fixture);
+    for (std::size_t i = 0; i < 8; ++i) {
+        expected.pages[0][17 + i] = source[1 + i];
+    }
+    expect_copy_to_result(fixture, UserAccessFixture::first_address + 17,
+                          source.data() + 1, 8, SV39_OK, expected);
+
+    for (std::size_t i = 0; i < 3; ++i) {
+        expected.pages[0][SV39_PAGE_SIZE - 3 + i] = source[1 + i];
+    }
+    for (std::size_t i = 0; i < 5; ++i) {
+        expected.pages[2][i] = source[4 + i];
+    }
+    expect_copy_to_result(fixture, UserAccessFixture::first_address + SV39_PAGE_SIZE - 3,
+                          source.data() + 1, 8, SV39_OK, expected);
+    require_equal(source, source_before, "writeback preserves source and source guards");
+}
+
+void test_copy_to_rejects_first_page_permissions() {
+    const std::array<unsigned char, 8> source{1, 0, 0xff, 4, 5, 6, 7, 8};
+    const auto source_before = source;
+    for (uint64_t flags : {SV39_PTE_R | SV39_PTE_X | SV39_PTE_U | SV39_PTE_A,
+                           SV39_PTE_R | SV39_PTE_W | SV39_PTE_A | SV39_PTE_D}) {
+        UserAccessFixture fixture;
+        prepare_writable_access(fixture);
+        remap_access_page(fixture, UserAccessFixture::first_address,
+                          fixture.first_page, flags);
+        const auto expected = capture_user_access(fixture);
+        expect_copy_to_result(fixture, UserAccessFixture::first_address + 17,
+                              source.data(), source.size(),
+                              SV39_ERR_INVALID_ARGUMENT, expected);
+    }
+    require_equal(source, source_before, "permission rejection preserves source");
+}
+
+void test_copy_to_preserves_valid_prefix() {
+    UserAccessFixture fixture;
+    prepare_writable_access(fixture);
+    remap_access_page(fixture, UserAccessFixture::second_address,
+                      fixture.second_page, UserAccessFixture::page_flags);
+    const std::array<unsigned char, 8> source{1, 0, 0xff, 4, 5, 6, 7, 8};
+    const auto source_before = source;
+    auto expected = capture_user_access(fixture);
+    for (std::size_t i = 0; i < 3; ++i) {
+        expected.pages[0][SV39_PAGE_SIZE - 3 + i] = source[i];
+    }
+    expect_copy_to_result(fixture, UserAccessFixture::first_address + SV39_PAGE_SIZE - 3,
+                          source.data(), source.size(), SV39_ERR_INVALID_ARGUMENT, expected);
+    require_equal(source, source_before, "failed writeback preserves source");
+}
+
+void test_copy_to_zero_length_and_null_arguments() {
+    UserAccessFixture fixture;
+    prepare_writable_access(fixture);
+    const std::array<unsigned char, 8> source{1, 0, 0xff, 4, 5, 6, 7, 8};
+    const auto source_before = source;
+    const auto expected = capture_user_access(fixture);
+    for (uintptr_t address : {uintptr_t{0}, uintptr_t{UINTPTR_MAX},
+                             uintptr_t{UINT64_C(1) << 38}}) {
+        expect_no_change(
+            [&] { return capture_user_access(fixture); },
+            [&] { return user_copy_to(nullptr, address, nullptr, 0); }, SV39_OK);
+    }
+    expect_copy_to_result(fixture, UINTPTR_MAX, nullptr, 0, SV39_OK, expected);
+    expect_no_change(
+        [&] { return capture_user_access(fixture); },
+        [&] {
+            return user_copy_to(nullptr, UserAccessFixture::first_address,
+                                source.data(), source.size());
+        }, SV39_ERR_INVALID_ARGUMENT);
+    expect_copy_to_result(fixture, UserAccessFixture::first_address, nullptr, 1,
+                          SV39_ERR_INVALID_ARGUMENT, expected);
+    require_equal(source, source_before, "entry checks preserve source");
+}
+
+void test_copy_to_rejects_invalid_ranges_before_writing() {
+    struct Scenario {
+        uintptr_t start;
+        std::size_t length;
+    };
+    constexpr uintptr_t last_low = UINT64_C(0x0000003fffffffff);
+    constexpr uintptr_t first_high = UINT64_C(0xffffffc000000000);
+    const Scenario scenarios[] = {
+        {UINTPTR_MAX - 1, 8},
+        {last_low, 2},
+        {last_low, first_high - last_low + 1},
+    };
+    const std::array<unsigned char, 8> source{1, 0, 0xff, 4, 5, 6, 7, 8};
+    const auto source_before = source;
+    for (const Scenario &scenario : scenarios) {
+        UserAccessFixture fixture;
+        prepare_writable_access(fixture);
+        const uintptr_t page_address = scenario.start & ~(SV39_PAGE_SIZE - 1U);
+        // A writable first byte catches accidentally copying before range validation.
+        require_equal(sv39_map_page(fixture.root, page_address,
+            reinterpret_cast<uintptr_t>(fixture.first_page), WRITABLE_USER_FLAGS),
+            SV39_OK, "map writable start of invalid output range");
+        const auto mapping = query_mapping(fixture.root, scenario.start);
+        require_equal(mapping.result, SV39_OK, "invalid range begins at a writable byte");
+
+        const auto *l1 = reinterpret_cast<const Sv39PageTable *>(
+            static_cast<uintptr_t>(sv39_pte_physical_address(fixture.root->entries[
+                sv39_vpn_index(scenario.start, 2)])));
+        const auto *l0 = reinterpret_cast<const Sv39PageTable *>(
+            static_cast<uintptr_t>(sv39_pte_physical_address(l1->entries[
+                sv39_vpn_index(scenario.start, 1)])));
+        const std::array<PageBytes, 2> boundary_tables{capture_page(l1), capture_page(l0)};
+        const auto expected = capture_user_access(fixture);
+        // The deliberately oversized request must fail before reading this small source.
+        expect_copy_to_result(fixture, scenario.start, source.data(), scenario.length,
+                              SV39_ERR_INVALID_ARGUMENT, expected);
+        require_equal(query_mapping(fixture.root, scenario.start), mapping,
+                      "range rejection preserves boundary mapping");
+        require_equal(std::array<PageBytes, 2>{capture_page(l1), capture_page(l0)},
+                      boundary_tables, "range rejection preserves complete boundary tables");
+    }
+    require_equal(source, source_before, "invalid output ranges never consume or modify source");
+}
 } // namespace
 
 int test_user_access(void) {
@@ -398,5 +558,15 @@ int test_user_access(void) {
     passed = run_case("user copy: non-canonical start", test_copy_from_noncanonical) && passed;
     passed = run_case("user copy: non-canonical last byte", test_copy_from_noncanonical_last_byte) && passed;
     passed = run_case("user copy: last address without overflow", test_copy_from_last_address) && passed;
+    passed = run_case("user writeback: offsets and separated PA across 3+5 bytes",
+                      test_copy_to_offsets_and_separated_pages) && passed;
+    passed = run_case("user writeback: first page requires W and U",
+                      test_copy_to_rejects_first_page_permissions) && passed;
+    passed = run_case("user writeback: read-only second page leaves valid prefix",
+                      test_copy_to_preserves_valid_prefix) && passed;
+    passed = run_case("user writeback: zero length and NULL arguments",
+                      test_copy_to_zero_length_and_null_arguments) && passed;
+    passed = run_case("user writeback: invalid complete ranges reject before writes",
+                      test_copy_to_rejects_invalid_ranges_before_writing) && passed;
     return passed ? 0 : -1;
 }

@@ -1,6 +1,484 @@
 # TinyOS 项目记忆
 
-最后更新：2026-10-30
+最后更新：2026-11-10
+
+## 用户授权迁移前Git检查点与快照（2026-11-10）
+
+用户明确要求上传当前内容到Git并做snapshot以试其他环境。保存标签snapshot/pre-environment-20261110-201406，目标origin/main为https://github.com/wsd32588/OS-.git；本次包含全部当前可跟踪项目改动及作者删除，不重置/补完B15。make链接通过、82宿主通过、16秒QEMU旧链ID2/4/5/3退出0/23/37/0且后续3S ticks。B15的sched_configure_user_reaper空stub未调用，导致unused参数/缺返回值两条警告，必须作为WIP保留，不声称警告清零或B15完成。工具版本与恢复说明见docs_from_riscv/ENVIRONMENT_RESTORE.md。
+
+本地备份目标D:\Backups\TinyOS\20261110-201406，含Git bundle/源码归档/环境及包版本清单/验证日志。在线WSL导出尝试中断留下零字节Ubuntu.tar，未当成功；提供Windows侧离线导出脚本，需退出WSL内开发任务后执行，避免中断当前后端。项目快照和完整WSL环境导出分开报告，不能把源码备份称作已完成整机快照。
+
+## 保持Ubuntu，Debian仅作为备选讨论（2026-11-10）
+
+作者已决定当前继续Ubuntu，另询问Debian与复现影响；没有授权或执行迁移。Debian stable强调维护已发布的软件集合、以安全和重要可用性修复为主，有RISC-V交叉GCC/QEMU软件包，因此不能把源码迁移泛称为“很多无法复现”；实际风险主要为工具版本、包路径与专用脚本。已核对tools/architecture/install.py限制Ubuntu26.04 x86_64且绑定特定deb/libclang，Debian不能直接复用该可选工具安装器；核心Make构建无同样发行版检查。项目已验证环境仍Ubuntu，Debian尚未实际构建验证。
+
+## Fedora迁移选项讨论，尚未迁移（2026-11-10）
+
+作者因多次环境中断考虑改用Fedora或其他发行版。已核对Fedora官方WSL镜像、Fedora交叉gcc/binutils与RISC-V QEMU包存在；据当前freestanding Makefile判断源码迁移可行，但未在Fedora构建或验证，不保证工具版本/固件/调试器路径一致。.wslconfig为所有WSL2发行版的全局配置，改Fedora WSL仍共用网络模式，不能据此承诺解决本次localhost代理或历史Codex辅助目录问题。建议保留Ubuntu并行试装，迁移完整未提交/未跟踪源码，在新副本构建+82宿主+QEMU后决定；没有安装、改默认发行版或删除环境，项目已验证基线仍为Ubuntu。
+
+## 用户报告WSL代理连接故障已通过mirrored恢复（2026-11-10）
+
+用户通过Windows Codex CLI定位并报告：WSL后端→127.0.0.1:7890代理，而Clash运行Windows；NAT下目的地址指WSL自身导致拒绝，改mirrored后原地址可通。协作者核对微软官方WSL网络文档，其明确支持mirrored下Linux通过127.0.0.1访问Windows服务；本轮未独立复现本机网络故障或改配置。AGENTS.md已加单独排查入口，避免与历史arg0辅助目录丢失/命令启动os2及剪贴板图片路径缺失混淆。
+
+用户报告备份原.wslconfig修改时间17:21:57早于其18:44修复；保留为时间线索，不归因谁写入或改了哪项。此前为何能用、是否后端切换/WSL重启/TUN或转发停止仍未知，不能宣称更新或用户操作导致。TinyOS B15继续，未改产品或跑系统测试。
+
+## B15父字段与地址空间操作的职责澄清（2026-11-10）
+
+作者问release/adopt如何保留父ID、是否应核对新父非自己/子孙再设置。静态读当前Process.cpp：parent getter/setter/reset已实现，release只传&user_space_，adopt只赋user_space_并清UserAddressSpace source，不修改parent，所以自然保留；构造默认-1，创建发布时另设可信父ID。adopt是接管地址空间，不是孤儿收养；父身份/回环校验属于创建或reparent管理入口，不能塞到每次空间释放接管。B15固定根收养只需落实根存活/根无父/非退出者等策略前提，不新增任意祖先遍历。B15文档已补问答，未改产品或运行功能验证。
+
+## 创建工厂与自动场景的新讨论（2026-11-10）
+
+作者提出自动分配Process+Task的进程工厂，以测试当前生命周期和以后进程树，不再依赖固定几个演示角色。核对已有task_allocate/SPAWN已能运行期分发新ID/复用槽，静态容量不等于固定身份；建议创建服务、唯一任务池、真实调用场景驱动分层。服务准备候选/建立初始父关系/最后发布并返回ID，池唯一分配槽/ID；用户父身份不可任意伪造，fork共享发布但复制快照，exec不分配Task；调度/孤儿收养不塞工厂。初版可配置静态池，动态Task/栈分配另议且活地址不可搬移。自动场景保存返回ID，让真实父执行spawn/fork/exit/wait，宿主QEMU检查因果事件，不直接写parent字段绕过功能。
+
+TASK_MODULE_DESIGN已记录方向，B15父字段/收集任务保持；本批P0可复用已有创建入口，统一服务与多镜像阶段结合建议尚未作为新的强制批次实施，TaskTable整体拆分仍在本阶段完后。未改产品/未跑测试。作者已在Process头加入parent常量/字段/声明，cpp实现仍待完成；保留作者进度。
+
+## 已确定阶段完成再拆sched，B15完整任务交付（2026-11-09）
+
+作者明确“本章完成再拆，现在继续下一步”。路线已确定为B15父子生命周期→不同内置镜像选择/EXEC→本阶段功能/理解收尾→TaskTable及用户操作拆分→文件系统；不是逐项复刻rCore整章，阻塞wait/COW/多线程不做前置。当前不代写核心或拆sched。
+
+BATCH15_PARENT_AND_WAIT.md已一次交付文件/接口/状态/演示/既定P0：Process parent_id_=-1、getter/setter/reset清关系而resources_empty只管空间；boot两U后sched_configure_user_reaper(实际U1=3)一次预检后登记root3.parent=-1/U0=2.parent3；runtime SPAWN/FORK当前USER公开ID为父、EXEC保持。MAX_TASKS计划4→5，支持两S+root+父+孙；父exit/fault时活/DEAD孩子转交指定root，自己的结果保留。root带孩子终止诊断停机、无孩子可终止，reaperID保留直到安全sched_init。
+
+peek扩为task_peek_exit(requested_id,TaskExitInfo*,int* matched_id_out)，-1任意/-1/0/1结果、非1输出保持；peek/reap均限当前父。新增WAITPID11/user_waitpid(long,TaskExitResult*)返回实际ID>=0/尚活-2/错误-1；原REAP7具体ID及-1/0/1保留，两个syscall共享wire/copy后消费，必须reap(matched_id)不能reap(-1)。24字节wire不变、不加getpid/ppid/阻塞队列。
+
+用户wait-any三次收0/23/37并比较spawn/fork实际ID，保持所有原功能；允许删重复BSS、合并tag2/tag3 freshworker。临时预算RX0xfba→0xf82→0xefa=3834、RWmem0x1038，原O0/一页断言保持；拟定接口目标C11/C++20语法无诊断。证据.cache/batch15-preparation-2026-11-09/{api,user-budget}/results.json；70正式源配置保持，未实现/运行新内核关系或WAITPID。全部P0协作者承担，孤儿alive/DEAD在隔离五槽探针验证，不塞正式用户分支。起点为Process父字段及reset语义。
+
+## B14后拆分与下一步讨论（历史，顺序以上节决定为准）
+
+作者进一步表示先确定下一步，若不涉及太多sched则希望先完成本阶段再拆。核对建议下一步可为父子关系/受约束REAP与wait-any/孤儿收集责任，修改创建退出收集入口而保留轮转/timer/trap；先用既有三态+用户yield等待，不把阻塞wait队列当本阶段前提。已查官方rCore第五章确实sys_waitpid立即返回+用户yield重试；TASK_MODULE_DESIGN有来源与顺序补充。不同ELF选择仍是同镜像EXEC之外缺口，不声称等价完整教程章节。拆分未实施、不是关系功能前置；尚未交付下一批或最终确认收养策略。
+
+作者问sched是否该拆；只读核对897行实现后建议先提TaskTable，集中固定Task/同槽Process存储、ID/高水位/分配查找安全复用；current/idle/kernelroot与调度选择仍归scheduler。第二阶段迁fork/exec/用户终止资源事务至用户任务操作实现，显式依赖而非extern散布全局，Process继续仅资源/结果拥有者。scheduler薄壳做当前校验和终止后reschedule，用户操作不反调scheduler，表不调用用户流程。TASK_MODULE_DESIGN已有讨论草案，未正式交付B15完整任务/未改产品或跑重复测试，未把父子树或VFS并入拆分。
+
+## B14功能、全部既定P0与原三题集中审查归档完成，本批收尾（2026-11-09）
+
+作者三题原答已逐字归档BATCH14，协作者修正版明确分开，不要求重答。集中纠正：fork复制有效运行快照，子可直接从ecall后继继续，同VA经私有页表指向独立PA，不以exec为启动前提；exec保留身份替换程序，唤醒只改变调度状态。新镜像来自永久ELF，不迁移旧counter/BSS/栈；先准备后提交保护失败可返回性，提交后旧空间可能部分释放，不能返回的核心是旧环境不可恢复而非必然泄漏。内部0是成功状态，fresh a0是入口参数（本例3，也允许0）；内核栈由静态Task context持有且在三根下共享Supervisor映射，旧用户空间释放不含它，frame地址保持而内容被替换。三题与路径收尾完成，不自动开下一批。
+
+作者已修父预期37并恢复U0/U1 start；协作者只把已有candidate清理失败诊断移入真正release失败分支，随后70正式源配置哈希保持。make -B -j4无诊断/nm-u空，原82宿主及汇总通过，正式RX0xf9a/RWmem0x1038。正式25秒QEMU所有原标记保持，ID2/4/5/3退出0/23/37/0，fork snapshot→exec fresh→父isolation顺序正确，U1退出后12次S ticks，无失败/fault/halt；runner终止非客体关机。
+
+独立隔离运行时探针30项全真：四槽均占用仍同slot2/ID5/count4/next6/RUNNING/Process/context/frame/内核栈；候选准备仍旧根，完整新内容/权限符合boot镜像，新7页与父及旧子各7页独立，父/旧子全部内容/旧frame/shared保持；旧7页kernel根下释放rootlast，Task仍RUNNING/exit NONE；fresh入口40000000/SP40002000/a0=3/SPIE其余字0，dispatcher保持，实际tag3在新根/U-mode/原内核栈。五空间生命周期35合法free、新alloc21、净恢复14、三REAP零PMM。真实EXEC 8KiB水印底3424未触及/最深采样距底3456，含观测开销；.su exec768/loader2224/prepare80/syscall128/trap64，仅当前链证据。
+
+失败探针未配置助手零分配/输出哨兵及状态保持；真实EXEC PMM第4请求一次NULL，root+两内容恰3页归还/rootlast，无切根，旧服务frame/Task/Process/全部空间/shared/satp保持；旧用户收到-1且999/5678/EE/D不变，再次EXEC同ID5成功退出37。模板匹配守卫静态确认提交前，未新增运行时变体；受控NULL非实际RAM耗尽，loader自身回滚再失败历史限制未解决。失败副本仅移除重复BSS零检查以容纳额外调用，正式用户代码未改。
+
+证据.cache/batch14-final-2026-11-09/summary.json与normal/host/failures/runtime日志、脚本、副本和哈希。BATCH14文档/索引同步，执行路径与原三题原答/集中审查已归档，本批收尾；本轮只更新文档，无需重跑已通过测试，不追加矩阵/clean/stage/commit/push。以下为历史实现与审查过程，旧待修项已被本节结论替代。
+
+## B14历史复查：真实新入口已运行，当时待三处修正（2026-11-09）
+
+作者已实现正确commit（kernelroot→Process旧release→adopt→*frame=fresh→新root）、三处提交失败fatal、EXEC10/case/包装与用户tag3。make -j4无诊断/nm-u空，RX0xf12/RWmem0x1038；正式16秒QEMU实际fork子日志→exec fresh→同ID5/status37，没有exec returned；父仍按31收集，报通用旧文案unexpected U0 exit result并status1。共用fresh初值检查移动到main公共开头可成立，fork子从后继PC继续不重进初始化；但原U0/U1 start日志被删，需要恢复。准备失败candidate清理也失败分支仅wfi无打印，补一条诊断，仍停机。独立只读审查无其他正常路径阻塞。
+
+证据.cache/batch14-core-review-2026-11-09/build/undefined/qemu/normal-result/user-layout日志及70源哈希保持。未代改产品/未标完整B14 P0完成。下一步作者集中修三处：父期望37、恢复start、cleanup异常诊断。新空间入口确实运行的证据不代表完整资源/回滚/栈P0已执行。
+
+## B14准备助手草稿已保存，检查输出/错误与清理边界（2026-11-09）
+
+最新局部授权：作者明确要求给候选检查加补丁。协作者仅修改sched_exec_current候选校验段，添加根/模板/inner/count关系、新entry/stack_top canonical/对齐与candidate.root查询U/X、SP-1的U/R/W；局部reject_candidate统一本段失败回收/打印停机。make kernel/task/sched.o通过无诊断。用户已补current判空/失败return和freshframe，但freshframe后仍直接return0，提交阶段未写、未跑EXEC/P0；本次补丁不代写后续核心。
+
+最新：sharedprepare已保留create/load原SV39错误、普通失败不内清理，成功输出entry/top，SPAWN调用已有。sched_exec_current及声明已写，但current_user_task未判空、prepare失败/模板不匹配清理后无return，结尾误task_create_user并无条件return0；尚无EXEC syscall接线。已集中指出需新候选启动校验/freshframe/同Task原位提交，不能新分配Task；prepare拒绝返回-1，commit后异常停机。未代改/未跑未完成EXEC。
+
+实际spawn.cpp/hpp新增prepare_builtin_user_space，SPAWN已用局部candidate/entry/stack_top调用助手后创建Task。成功末尾输出赋值正确；草稿将create/load错误统一-1且助手内release，外层又release。建议按任务保持SV39错误码、普通失败留partial output由caller统一release，PAGE_FREE_FAILED原诊断停机保留；两层release在成功清空时通常第二次noop，不冒称必然doublefree。loader已有fence.i:::memory，助手末尾重复无clobber指令可删。sched_exec_current尚无实际实现/声明，未跑B14 P0/未代改产品。
+
+## 进程树旁支讨论：祖先收养、指针与span（2026-11-09）
+
+最新澄清：作者对方案都开放，祖先收养/指针只是备选，不是硬性偏好。其链表顾虑来自过去父子链表维护与反复证明不悬空的负担。讨论建议当前固定四槽可只存parent_id、由管理器扫描推导孩子并集中维护退出收养/reap权限，避免双向链表的一致性负担；ID也不能自动解决语义。尚未选择最终关系设计或实现，B14保持EXEC。勿将这条顾虑解释为作者必须重学链表后才能继续。
+
+作者提议父退出孩子挂祖父、偏好指针/span。已查Linux官方man-pages和Microsoft Learn并结合当前静态g_process槽复用说明：改的是父子边/收集责任，不交换PID/槽位，退出节点结果仍待其父reap；需处理死祖先/reaper兜底、活/DEAD孩子、收养者发现孩子与未来REAP权限。内部指针可用，但slot2从ID2复用至4/5，地址相同不表示同一身份；span只借数组、不保证节点/身份/回链生命周期，改数组条目不更新其他复制指针。建议明确reaper+以后可标记祖先，作者任意活祖先策略可实现但未确认为最终设计。讨论记录TASK_MODULE_DESIGN对应节；未加parent字段/新批次/代码，B14仍当前任务，不把建议记成已授权实现。
+
+## B14完整任务已交付：同Task/ID的内置EXEC替换（2026-11-09）
+
+作者在B13归档后明确继续。docs_from_riscv/tinyos/BATCH14_BUILTIN_EXEC.md完整接口/顺序/演示/P0已交付，作者核心、协作者全部P0。EXEC10/user_exec(uintptr_t)只接受不透明数值入口参数；单一内置ELF重新装载，同fork子slot2/ID5不变，新tag3counter7/BSS0/d→fresh日志→退出37，父按原forkID收集37，保留B12和fork快照/修改/yield/隔离。无路径/argv/多镜像/父子权限/COW/阻塞wait/VFS。
+
+先在spawn.hpp/spawn.cpp提取tinyos::prepare_builtin_user_space(UAS& output,uintptr_t& entry_out,uintptr_t& stack_top_out)，共享已有唯一g_root/image/layout配置，保留configure_builtin_spawn名称/boot接线；普通错误保留partial output给callerrelease，成功最后提交数字输出，loader PAGE_FREE_FAILED沿用停机。SPAWN改调用助手后仍最后task_create_user，不新增配置/Make对象。
+
+C sched_exec_current(frame,arg)：current_user_task/实时SIE0→候选准备/完整启动检查（尤其candidate.kernel_root==g_kernel_root）→局部零freshframe只设entry/SP/a0arg/SPIE→提交激活内核根→当前Process.release_resources旧7页→adopt(candidate)→原位copyfreshframe→显式激活新根→内部return0。准备失败清candidate后-1且旧程序/传入frame保持；提交后任何release/activate异常只能诊断停机。复用现有Process接口，不新增exchange，不task_allocate/reset/context_init，不销毁Task或复制内核栈，ID/slot/RUNNING/context/frameptr不变。旧PC/SP无需fork式继续有效校验，exec替换它们。
+
+syscall入口仍统一旧PC+4；失败case写a0=-1，成功必须保留新frame.a0=arg与精确ELFentry，不能覆盖为内部0或entry再+4。user_exec普通long返回API不可noreturn（错误会ret）；正式演示调用后直接fail("exec returned\n")，成功不回旧调用点。
+
+用户tag2/tag3共用fresh-worker、删旧重复BSS检查，子原return31改exec(3)，父预期37。临时RV64用户原型已编译RX0xfc2=4034≤4096/RWmem0x1038；临时新接口C11/C++20语法无诊断。证据.cache/batch14-preparation-2026-11-09/preparation-results.json及原型/日志。70正式源配置与B13验收后哈希一致；没有正式EXEC实现/运行/P0，不把准备当验收，未代改产品/提交推送/clean。
+
+P0已一次给齐：原演示/回归、同ID5/四槽满仍成功、freshframe/指令参数与旧调用不返回、旧根准备/kernel根释放/新根U执行、候选与父/旧私有页隔离、一次PMM第4请求NULL清3页/旧程序状态保留/重试成功、未配置零分配、35合法free/新alloc21/net+14/reap0PMM及真实8KiB新链余量。五份空间生命周期（U0/U2/fork旧/exec新/U1）仍仅四用户Task；不增加EXEC槽满失败矩阵。P1/P2选做。下一步作者先提取共用准备助手。
+
+## B13功能、全部P0与三题原答/审查已归档，本批收尾（2026-11-08）
+
+作者修复REAP助手/unused对象并把实际U2reap移到fork前；协作者仅将此一条既有调用再前移到数据检查/reaped日志前，补齐已确认的顺序，未改内核。随后70正式源配置哈希保持。正式make -B -j4无诊断/nm-u空，原82宿主+汇总通过；RX0xf8a≤4096/RWmem0x1038。正式25秒QEMU原B12全部标记、counter各3、TimeDataHello各2，id2/4/5/3退出0/23/31/0，U2退出后reaped、fork子snapshot/父isolation各一次，后续13S ticks，无fail/fault/panic。runner终止非客体关机。
+
+全部P0证据.cache/batch13-final-2026-11-08/summary.json及正式日志，host/failures/runtime子目录各results+脚本/副本/日志。host副本原82+两clone场景=84+汇总，无诊断，RX/RW两内容页完整bytes/flags/VA复制、独立5页/合法唯一rootlast释放、活动源CSR模拟、源缺映射零分配拒绝均过；新增两例未加入正式test目录。
+
+真实fork发布前四内容页完整bytes/VA/flags一致，新7页逐一不同于父7页；父Task/Process/全部空间/shared/satp/current保持。SIE0/父根/内核栈，slot2/id5/READY/count4/old2和4无，子ownframe a0=0其余字含PC/SP/gp/tp/status与父postecall快照相同；父a0=5/sepc仅+4/其余GPR保持；实际子U-mode ownroot/栈。四用户生命周期各7唯一free/kernelrootfirst/rootlast，reap零PMM，总28free/新alloc14/net+14跨2timer保持。FORK8KiB水印底4760字节未触及、最深采样距底5472，含观测开销；.su fork736/clone320/validate784/privatepublish80/syscall112/trap64/Process32，非任意未来链证明。
+
+失败P0真实槽满FORK在U0reap前(next4)候选7页归还、父与全局/空间零提交；后续U2reap后fork第4PMM请求（L0）一次NULL，清理前观察root+首VA/PA/count1+空L1、首内容复制正确，归还3页含空L1/rootlast，无ID损耗，立即重试id5成功/子31父0。受控注入不等于实际耗尽RAM。
+
+B13三题原答与审查已逐字归档。第一题调用链/sepc核心正确，补父用户代码实际暂停、syscall已+4不能再加、重复ecall是trap循环不是C栈递归。第二题共用frame踩踏/子0/各自栈顶正确；父a0误称传入id，纠正fork无参数/内核分配新子ID写父frame，子0也为助手显式赋值；frame即使未悬空也不可共用，sscratch按恢复frame+288重建。第三题立即登记PA与统一清理核心正确，精确区分内容页在pages[]、空L1由root链接并经reclaim_empty_tables释放、根外层最后free；本故障L0未分配，仅3页；首次登记保证可达归属，free后清PA支持重试，不能仅清零L1或把表页计入内容账本。
+
+修正版是协作者整理，不冒充作者复答，不要求重复作答/新测试。B13功能、全部既定P0、路径与三题原答/集中审查归档完成，本批收尾；索引同步。下一批未启动，未提交推送/clean；后续为实现过程历史。
+
+## B13用户复查：助手已修，实际U2收集调用仍在fork后（2026-11-08）
+
+作者再次请求检查：reap_requested已正确{0}/比较expected_status、未使用result已删，但只将reaped U2日志移到fork前，实际reap_requested((int)spawned_id,23)仍在fork后行283。因此槽仍被U2占用，不能运行成功fork；应移动这条调用到spawn日志之后、U2数据检查和reaped日志之前，删除原位置调用。未重复构建或QEMU同一已知失败路径/未开始完整P0/未代改产品。MM较上次core临时正常验证仅删未使用user_access.h include，无内核功能变更。下一步作者修这条调用的顺序。
+
+## B13正式用户演示已保存，集中检查发现两处阻塞（2026-11-08）
+
+作者请求检查。实际main已有fork子/父分支和reap_requested；独立只读审查同样确认两项功能问题：助手把status预置expected_status但仍比较!=0，应对象{0}/成功后比较expected_status；fork整个块放在spawn后、U2reap前，四槽占满（DEAD未reap也占），必须移到U2成功reap/完整数据检查/reaped U2日志之后。U1中残留不用的TaskExitResult result需删，make -j4成功但unused-variable一警告；子分支逻辑正确，无其他正常路径阻塞。RX0xfa0仍≤4096，重复BSS检查仅旧非阻塞整理项。
+
+正式12秒QEMU实际U1 fork failed/status1，随后U2 fresh/status23，未执行fork子，符合槽满。证据.cache/batch13-user-review-2026-11-08/{build.log,build-result.json,qemu.log,normal-result.json,user-layout.log,author-main.c}。未代改产品/未开始完整B13 P0；下一步作者修上述三处再复验，不追加新矩阵。上一节此前临时内核正常路径证据仍有效，但不能代表当前正式用户演示已通过。
+
+## B13内核主体编译与临时真实FORK正常路径通过，待作者用户演示（2026-11-08）
+
+当前实际clone已补4096字节PA别名复制、maskedflags map及NO_MEMORY；Process转交、私有frame发布、SIE/PC/SP预检、值snapshot、统一candidate清理、fence.i、FORK9/case/API/包装均存在。独立只读审查无核心阻塞；正式make -j4成功/nm-u空，原82宿主+汇总通过。正式user/main.c还没有user_fork调用。
+
+在.cache/batch13-core-review-2026-11-08/source只用交付时的临时user main替换、保留作者当前内核，完整构建无诊断；实际25秒QEMU原B12全部标记与fork child snapshot/parent isolation各一次，id2/4/5/3退出0/23/31/0、子收集成功、后续13次S tick，无失败/fault/panic。runner停止，未声称客体关机。证据同根probe-result.json（normal_fork_probe_passed=true/full_b13_p0_completed=false）、build/host/probe日志/源码副本/布局与70项哈希前后保持。未代改产品/提交推送/clean。
+
+当前只通过核心正常路径，不标B13功能/全部P0完成。下一步作者在正式main抽reap_requested共用助手，U1收集U2后加原定fork父子分支/volatile栈快照/子31/父隔离检查；之后协作者集中做完整原定P0，不追加作者矩阵。下节为任务交付与实现过程历史。
+
+## B13完整任务已交付：复制运行快照的立即FORK（2026-11-08）
+
+作者已在user_address_space.cpp开始clone入口草稿、头声明存在：目标非空检查误用全AND，并把两个0成功的validator取!。已集中说明逐项OR/拒绝source==output/检查整个目标pages为空，validator不等价于空状态且!0反向；未代改产品或编译运行未完成函数。下一步作者修入口再按任务做源预检/逐页复制。
+
+后续目标入口已修；源草稿只判root非空且先validate_mappings，最后直接output.root=source.root并returnOK。已说明复用valid_root/布局/归属检查、innerroot==outerroot，先页记录校验再严格query每记录非空/存在/精确PA/U；输出应在预检后由user_address_space_create取得新根，不能浅拷贝拥有指针。未代改/未运行半成品，当前尚无实际页复制。
+
+调度入口SIE/USER问题已解释：硬件进入S trap时SIE清0/SPIE保存旧值，当前入口无再开启；复用current_user_task做软件任务USER/RUNNING/Process/root与SPP0来源检查，CPU当前S模式不改变kind。显式检查SIE应csrr实时sstatus bit1而非只看保存frame，拒绝不符合上下文；不必补关中断。当前函数草稿拼scher_fork_current，需与声明sched_fork_current一致。官方Supervisor规范已核对，说明归入B13；未改产品/未跑半成品。
+
+最新sched_fork_current/private发布助手已保存，函数名修正/绑定adopt正确；编排仍csrr &0拼错、clone和allocate失败无candidate清理、缺发布前fence.i与分配前原定PC/SP检查；snapshot是frame引用，建议按任务保存clone前const值副本，引用并非当前必然故障。实际MMclone源预检/新根/申请记录已有，尚缺字节复制和map，PMMnull误返INVALID_ARGUMENT应NO_MEMORY；Process转交签名已正确。已集中指出，未代改/未跑未完成FORK。
+
+随后作者修正编排：当前%0、实时SIE、PC/SP合法/对齐及U/X和SP-1的U/R/W、值snapshot、共用candidate回收、fence.i均已保存。进入FORK9/case/user_fork声明与汇编接线，现有四处尚无FORK。MMclone仍缺整页复制/map与NO_MEMORY码，尚不具备运行FORK条件；已提醒，未代改/未执行B13验证。
+
+作者在B12归档后明确要求下一BAT。当前任务docs_from_riscv/tinyos/BATCH13_EAGER_FORK.md：无参数SYSCALL_FORK9/user_fork，父返回新ID、子0，同一ecall后PC继续；立即复制所有内容页（代码/栈/data/BSS），不用原ELF、不做COW/exec/父子权限/阻塞wait/VFS。保留B12整链后在U1收集U2后fork，默认slot2/ID5，子继承counter203、已写BSS、大写D与volatile栈局部1234，修改后return31，父按返回IDreap并验证自身保持。
+
+接口一次给齐：C user_address_space_clone(const UserAddressSpace*,UserAddressSpace*)；Process::clone_address_space(UserAddressSpace&) const转交私有space；C sched_fork_current(trap_frame*)和scheduler私有task_create_user_from_frame(snapshot,candidate)。不新增fork.cpp/Task表/分配器或可变getter。完整源预检需严格query存在/精确PA/U，release的validate_mappings允许NOT_MAPPED不可直接当完整活源校验。source可活动，目标初始空；每次取得新内容页立即记VA/PA/count/innerroot，再复制/map；尚无内容页保持innerroot空/count0。错误保留partial output给调用者统一release，覆盖首次map留下空L1的回收；cleanup异常停机，最后allocator才提交ID。UAS属宿主源，fence.i放target-only sched发布前。
+
+现场保留已+4的sepc、实际用户SP/gp/tp/其余用户寄存器与SPP0；只复制frame内容到孩子自己静态栈，子a0=0，caller在case中接新ID。不可复制Task/context/frame指针/内核栈，不能设ELF入口或初始栈顶。8KiB内核栈保持。
+
+作者实现核心/协作者P0：正常父5子0/31、完整字节与权限隔离/7页归属、slot2/count4/旧2和4拒绝、槽满回滚、一次第4PMM请求（首次L0）NULL时归还root+内容+空L1三页并重试ID5；正常四个用户生命周期28合法free、spawn+fork新alloc14、最终net+14，reap零PMM；实际新trap栈余量。P1/P2选做，不追加作者矩阵。
+
+为提前核对RX预算，临时用户原型抽reap_requested共用轮询、删U2重复BSS检查并加fork分支，RV64用户编译通过RX0xf38≤4096/RWmem0x1038；临时接口C11/C++20语法通过。证据.cache/batch13-preparation-2026-11-08/preparation-results.json及原型/日志。70正式源配置哈希与B12保持；未实现或运行正式内核FORK/未执行B13 P0，不把准备当验收。仅任务/索引/当前边界文档更新，未代写产品/提交推送/clean。下一步作者从MM clone开始。
+
+## B12功能、全部P0与三题集中审查已归档，本批收尾（2026-11-08）
+
+作者已补boot配置（在timer前、当前位于原两用户装载前）、内核静态栈8192、loader回滚PAGE_FREE_FAILED独立停机；后端检查/两个release错误处理均存在。正式make -B -j4无诊断、kernel.elf无未定义；82宿主场景+汇总通过。user RX0xd98≤4096、RWmem0x1038仍两页。正式25秒QEMU原U0/U1完整标记及各3counter/TimeDataHello各2保留：U0id2/status0→U1reaped→spawn→U2fresh/id4/status23→U1reaped→U1id3/status0；后续15次S tick，无失败/fault/panic，runner停止不等于客体关机。
+
+证据.cache/batch12-final-2026-11-08/summary.json及build/host/normal日志。独立failures/全部通过：未配置-1零PMM/状态保持；真实U1 trap四槽满（U0已DEAD未reap）候选7页唯一归还/rootlast/Task、Process、ID、count、current、全部活空间/shared/satp保持；reap后第4次PMM请求受控注入一次NULL（已分配根+2内容页），真实回滚3页/rootlast/无提交无泄漏；后续原spawn仍ID4/slot2/highwater4且真实执行收集。这里是受控分配失败，不声称真实耗尽RAM。
+
+独立runtime/全部通过：SPAWN真实SIE0/U1根/内核栈和current槽3保持，新Task READY/slot2/id4/old2无，新frame a0=2、caller a0=4/sepc+4其他寄存器保持，随后实际U-mode/自己根和trap栈。新空间7页与U1私有7页逐一不同；U0/U2/U1各唯一7free/kernelroot前置/rootlast、幸存U1完整owner/页表/内容/shared保持；reap均零PMM，总21合法free、新alloc7、最终net+14跨2timer保持。正常SPAWN实际8KiB watermark底部4128字节未触及、最深采样SP距底4176，含观测开销；target.su loader2224/spawn368/C包装96/syscall112/trap64，非任意未来链证明/未声称旧4KiB已溢出。两个目录有results.json/脚本/副本/日志，runtime另有stack-usage.json。
+
+70正式源/配置哈希保持，无产品改动/提交推送/clean。六步执行路径梳理与原三题后，作者已合并提交原答，BATCH12逐字保留并集中审查：U1根/内核栈与恒等映射方向正确，但S-mode仍经过satp翻译；不切candidate因共享Supervisor内核映射已足够，同用户VA隔离靠各自页表/不同PA，loader写新页的内核地址。两个frame的a0=2/4正确；READY后何时执行取决于后续调度，无需等U1某次ret，恢复U态后可立即抢占，日志顺序不保证。资源泄漏与原ELF初值7正确；ID空洞本身合法，本批失败不消耗ID是准备后提交的事务约定，.data取永久ELF/.BSS清零，不复制U1运行内存。
+
+修正版为协作者整理，不冒充作者复答，不追加复答/测试门槛。B12功能、全部既定P0、路径梳理、原答/审查/修正版均归档，本批收尾；索引同步，不自动下一批。重复BSS检查和少量缩进仅非阻塞整理项。本次仅文档更新，既有验证继续有效，无需重跑。
+
+## boot_stages.cpp的clangd头文件误报已修复（2026-11-08）
+
+作者报告included file bits/c++config.h缺失。实际单独强制编译boot_stages.o成功；根compile_commands.json仍为10月18日旧C版，无boot_stages.cpp记录。clangd --check复现从boot/entry.S推断GCC命令、缺-Ifreestanding，报该头缺失及共3错误。已重新Bear记录实际完整构建并用现有脚本合并宿主数据库；新记录含Clang RV64/C++20/-Ifreestanding，clangd同文件0错误。全构建与宿主CTest通过、kernel.elf未定义符号为空，未修改功能源/运行SPAWN，不表示B12 P0完成。编辑器若残留红线，重新加载编译数据库/重启语言服务即可。
+
+make compdb首次因沙箱禁止Bear本地loopback socket而在capture前失败；随后仅bear -- make -B all在批准范围外沙箱运行成功，再合并已有宿主库，未重复宿主测试/未clean。证据.cache/clangd-boot-2026-11-08/{result.json,boot-clangd-before.log,boot-clangd-after.log,compdb.log,bear.log}。无提交推送。
+
+## B12后端与用户分支已接入，待boot配置与两处原定收尾（2026-11-07）
+
+实际源码已有spawn.o、syscall8/用户封装、配置静态副本和创建根→装载→task_create_user事务；g_root未配置拒绝与两处release的res!=SV39_OK已修。U2检查初始数据/写BSS/yield/return23及U1按返回ID轮询收集/验证自身数据已保存。make -j4返回目标已最新，nm -u kernel.elf为空；此次没有强制重编或运行SPAWN，不能视为B12验收。
+
+剩余原定事项：boot_start_user结尾尚未调用configure_builtin_spawn，g_root将一直为空；TINYOS_KERNEL_STACK_SIZE仍4096U，按本批任务改8192U；loader返回SV39_ERR_PAGE_FREE_FAILED须先诊断停机，不能仅检查随后外层release结果。U2当前两次检查BSS全零，第一段写死4096+32且无诊断，可删除首段保留sizeof(buffer)的检查并填充循环（非运行阻塞）。未代改产品、未提交推送/clean。
+
+## B12作者开始配置检查：区分物理根与虚拟布局（2026-11-07）
+
+作者新增spawn.h/hpp/cpp并问检查与对齐。已读真实Addr API：PhysAddr(kernel_root).is_valid/is_page_aligned用于根的物理编码/页对齐；VirtAddr用于code/data/stack起点的canonical/页对齐，并用try_add(SV39_PAGE_SIZE,stack_top)检查栈顶。entry是指令地址不要求页对齐，image字节起点也不要求页对齐；完整ELF字段/区间校验仍复用loader。配置固定两LOAD，load_segment_count应!=USER_ELF_MAX_LOAD_SEGMENTS拒绝，避免只拒0后又遍历全部容量。
+
+当前源码函数拼configure_builtin_spwan，头/实现需统一spawn；私有状态只有g_root、user_stack_top、空指针condidate，尚未保存镜像和布局/提交就绪。建议g_root为空表示未配置、仅成功最后赋值，可复用其非空拒绝重复配置，避免多余ready状态；保存image span和两布局副本/checked stacktop，candidate应在实际spawn内以UserAddressSpace candidate{}存在，不放全局空指针。此次只解释与记录，未代改产品/未编译未完成功能，B12尚未运行。
+
+## 跳板页提问：TinyOS保留共享内核映射方案（2026-11-07）
+
+用户问为何还无跳板页。已核对TinyOS create复制槽0/2、stvec直接trap_entry、trap汇编无satp切换，以及本地rCore高跳板说明和官方教程。当前UserRoot共享Supervisor内核代码/栈/数据/UART映射，U→S trap后仍用user root即可进入handler；任务间换根也保留同一内核映射，所以无须独立跳板页。rCore隔离方案只在用户表保留必要Supervisor跳板/现场，汇编经共同VA页切satp再进内核。Task.kind/SPP/当前satp是不同概念；task_trampoline C入口包装不等于页表跳板。仅解释并补B12文档，不改产品/不自动切换地址空间设计或启动跳板实现；B12仍SPAWN任务待作者。
+
+## B12完整任务已交付：内置ELF的用户SPAWN（2026-11-07）
+
+用户在B11归档后明确继续。已交付docs_from_riscv/tinyos/BATCH12_BUILTIN_SPAWN.md，作者写核心/协作者P0，不自动rCore教程/VFS。新SYSCALL_SPAWN8，user_spawn(uintptr_t)返回新公开ID；U1收集U0后spawn(tag2)→固定池slot2/新ID4→U2原始ELF数据counter7/BSS0/data小写d验证并修改自己数据/yield/return23→U1按返回IDreap验证23及自身数据保持，原U0/U1演示保留。tag2只是程序分支，内核参数不透明，不复制父运行内存/不建父子权限。
+
+新process/spawn.cpp后端按创建私有根→旧loader fresh装载→最后task_create_user转移发布；普通失败清candidate后-1，无ID/count提交，清理自身失败诊断停机（旧loader二次回滚限制不宣称解决）。调用时SIE0/未重调度，仍可借用U1用户root通过共享内核映射工作，不切candidate root，保持caller satp/current。新frame a0=tag2，caller frame a0=新ID。
+
+接口include/process/spawn.h给C仅process_spawn_builtin(uintptr_t)，spawn.hpp给bootCPP configure_builtin_spawn(kernel_root,span<const unsigned char>,const UserElfLayout&,const UserMemoryLayout&)；root/镜像永久借用，布局复制静态配置，ready最后提交且只配置一次，boot原两空间装载/转移流程保留，在timer前配置。Make加spawn.o；本批静态内核栈常量4096→8192留runtime装载余量，用户栈仍4096；不增加动态栈机制。
+
+准备仅临时头的RV64 C/C++编译通过；实际-O0 loader单帧2224+包装96、VM/PMM.su用量有记录，未验证整个新调用链（服务尚未实现）。证据.cache/batch12-preparation-2026-11-07/含preparation-results.json与临时头/probes/.su；67正式源配置hash保持。P0原82/正常链、slotfull和一次OOM回滚无ID消耗、未配置零分配、caller及新空间隔离/7页增减/收集不二次free/真实U执行和内核栈余量，由协作者承担；P1/P2可选。未代写正式代码，未运行SPAWN，未推送/提交/clean。
+
+## B11三题集中审查已归档，本批收尾（2026-11-07）
+
+作者提交合并三题原答，已完整保留在BATCH11并集中修正：1高水位task_count/slot_index对，公开ID误认current_task，纠正为Task.task_id；count4仍能创建是复用UNUSED槽，非越界；current_task仍槽索引。2原答谈文件可见性/进入目标地址，纠正find只查内核表不切目标空间；目标空间退出已释放，Process内核结果仍存，copy_to写收集者空间，先copy后reap保证失败可重试，0不碰buffer/-1可留合法前缀。3原答泛称避免干扰事件循环，纠正公开ID防旧请求误操作新任务，调度按槽/state；补充current_task变化后旧sp仍可能在用，直到trap汇编mv sp,a0，SIE0不能替代栈寿命判断，安全REAP发生于实际运行U1的trap且重调度前。
+
+修正版为协作者整理，不冒充作者复答，不追加复答或测试。功能、全部既定P0和三题原答/集中审查/修正版归档均完成，B11本批收尾。此次仅读代码/更新文档与索引，未重跑既已通过的测试、未修改产品。证据仍此前两个final目录。不自动B12/VFS/fork或推送，不clean/stage/commit/push。
+
+## B11功能与全部既定P0完成，进入原三题理解收尾（2026-11-07）
+
+作者保存sched_init最终修正：遍历真实g_process，两轮预检/reset，再全部Task metadata/UNUSED及idle metadata/context。与前次P0相比仅该函数改变，其他源码和函数scope一致。最新构建成功/nm-u空，正式20秒双U原全部标记/恰一次U1reaped/0与0退出/后续S tick正常。前次82宿主、wire布局、21次事务/槽复用新ID4实际执行、FAULT13/完整负2^40及7+7/幸存shared保持等既定P0继续有效，未无谓整套重跑。
+
+独立init-final实际验证有资源时-1且完整Task/Process/idle/global/PMM/satp零变化，较早空Process的status303亦保留（确保全预检先于reset）；资源空而元数据poison时全槽含尾槽/结果清空，ID/count/current和idle重置，frame逐寄存器/PC/flags/16对齐正确，0alloc/free/页数与satp保持，再真实正常双U收集一次/退出0与0。证据.cache/batch11-init-final-2026-11-07/{results.json,normal-result.json,scope.json,run_probe.py}及日志快照；67正式源配置hash保持，runner限时停止，不代表客体关机。正式代码未由助手修改。
+
+原sched_init缺口关闭，功能与全部必要验证已完成，接下来梳理Task/Process与“退出释放空间→DEAD留结果→peek/复制成功→reap清记录与UNUSED→同槽新ID”。原3题：count/槽/ID；copy先于消费及坏buffer保证；旧ID不匹配新任务与post-reschedule旧sp仍在用。尚无作者原答，不标理解收尾或整批归档完成。不自动下一批/推送/清理；P1/P2仍选做，不追加测试任务。
+
+## B11正常与REAP功能P0通过，剩sched_init原定收尾（2026-11-07）
+
+作者修return res/删除旧main重复块后集中复验，正式产品未代改。make -B -j4完整无诊断/nm-u空，wire实际C与独立C++20断言通过，RX0x8d0/RWmem0x1038保持四内容页；原82宿主+汇总通过。正式20秒QEMU双tag/原全部标记/两status0及恰一次U1reaped顺序正确，后续S tick持续。
+
+txn-reuse实际21次REAP覆盖10活0不碰buffer含坏地址/7非法-1含原始64位越界ID/DEAD坏copy保留完整状态→合法重试1→两次旧ID拒绝，所有REAP零PMM；同成功trap重调度前真实创建短S，slot2/新ID4/count4，内部4→2旧2无，现场正确且真实执行，创建零PMM。fault-wide两份真实FAULT13与EXIT(-2^40)都由U1收到完整24字节wire并收集；7+7唯一free/kernel根前置/rootlast/幸存全部owner及表页内容/shared保持，reap不二次free/最终14页归还/结果跨2timer。证据.cache/batch11-final-2026-11-07/{summary.json,txn-reuse/,fault-wide/}及正式build/host/normal日志。67正式源配置hash保持，各runner限时停止，不宣称客体关机。所列REAP功能P0通过，未加作者矩阵，理解题未收尾。
+
+仍剩原sched_init全Process预检与全槽元数据初始化：独立init-guard副本已拥有U0资源时，实际init返回0并把task_count3→0，期望-1且零修改。证据同目录init-guard/。应root校验后先只读检查所有Process资源空，再重置所有Process和Task元数据（UNUSED/id-1/proc空/frame空等）、idle元数据/context，最后提交global初值；不清栈/不释放页面。此项未修，不能标B11整批完成或进入下一批；理解收尾仍原三题。
+
+## U1新收集循环已保存，仍有旧重复段和吞0返回（2026-11-07）
+
+作者回复ok后核对已保存修改：syscall的实际info/&info及点访问、FAULT宏、commit失败停机、user_exit原地兜底已修；main新增U1正确对象/ID2/轮询/结果核对/消息。但新块后仍保留旧TaskExitResult* result={0}及user_tag目标ID/错误消息整段，会让两U提前return0跳过end。须只删除旧块，从该空指针声明到旧write reap消息结束，保留新U1块及原end_message。
+
+syscall_reap仍if(res!=1)return-1，须return res保留0。make -j4成功且已最新，尚未开始完整P0，避免把这两处已知错误带入验收。原sched_init预检/全槽重置仍待办，未代改产品。
+
+## REAP草稿构建过，隔离实际调用失败（2026-11-07）
+
+作者说应已过。读真实源：wire/case/用户API/汇编已接入，peek已修==NONE，reap顺序正确。make成功且目标已最新/nm-u空，但syscall_reap仍TaskExitInfo* info=NULL，peek直接-1；res!=1返回-1吞0。须实际局部info+&info，if(res!=1)return res，转换成员改点访问。copy后reap失败应诊断停机（目前返回-1）。正式main未调用user_reap，尚无收集演示。
+
+只在副本U1 end前插最小user_reap：完整构建通过，确认U0先status0退出，实际REAP返回-1，U1status91。证据.cache/batch11-review-2026-11-07/reap-probe/{build.log,qemu.log,result.json}，正式源哈希保持，16秒runner停止。未跑完整B11 P0/旧82，不代改产品。
+
+新增接线回归user_exit兜底循环被移到get_time/reap之后，应放回EXIT ecall紧后；FAULT宏TASK_RESUT_FAULT拼写一致可编译但建议正名。原sched_init全量预检/重置仍待作者，已接受拒NONE简化前提不变，不新增白名单或异常枚举矩阵。独立审查无额外正常路径阻塞。
+
+## B11进入REAP syscall接线，peek NONE条件须纠正（2026-11-07）
+
+作者要求下一步syscall。核对真实源reap/元数据助手已写且主体按协议，peek却将NONE简化拒绝条件写成!=NONE，须==NONE；未代改。make -j4实际sched.cpp重编/链接通过，无新增诊断，证据.cache/batch11-syscall-prep-2026-11-07/build.log，尚未运行收集或完整B11 P0。sched_init全槽预检/重置仍是原待办，allocate尚未共用metadata助手（不影响当前清字段等效）。
+
+作者接task_exit_result.h固定24字节/偏移0,8,16及C/C++断言，syscall7+私有helper+case、user封装及U1轮询。a0先long范围检查到__INT_MAX__再int，a1用户VA；peek<=0直接返回不碰buffer，成功逐字段wire映射并用当前调用者root copy_to，完整成功才reap，意外提交失败诊断停机；copy失败保留结果。结果头只在syscall.c/user_api.h包含，不能污染汇编共同syscall.h。原任务接口/演示/P0已齐，未新增作者矩阵或代写核心。
+
+## ID查找与peek草稿存在，reap讨论复用元数据助手（2026-11-06）
+
+用户问reap清理是否可借用allocate。真实find_task_slot_by_id正确；peek的DEAD分支缺资源空/有效reason，活分支过宽且末尾复制不可达。reap尚未完成，缺USER/nullproc/有效reason。
+
+建议私有task_clear_metadata仅清frame指针/entry/id=-1/kind/sleep/proc，不清state/栈/计数。reap先验证目标/USER/proc/DEAD/reason，再Process::reset（已内查资源空，无需重复resources_empty），成功后metadata助手、UNUSED最后/返回0；allocate同槽Process reset后可复用助手，再prepare/新ID/READY。不能调用task_allocate来清理，否则分发ID/改count/重建现场。仅解释和归档，未代改源码/跑未完成reap测试。
+
+## Process基本接线正常，下一步按ID查找与peek（2026-11-06）
+
+作者修好空proc残留、guard顺序和root getter后要求下一步。核对真实源：Process数组/用户同槽绑定/USER、C链接、结果初始化/公开ID日志、process.o均存在；make -j4成功且目标已最新。正式16秒QEMU双U end/status0、末次后S timer持续、无fault/halt，runner限时停止。证据.cache/process-b11-next-2026-11-06/；仅正常接线回归，未完整B11 P0。sched_init全Process预检/全槽元数据重置仍为原待办，USER缺root日志和adopt外重复清源为已有整理项。
+
+接下来作者写sched.cpp私有find_task_slot_by_id(int)->槽index/-1（拒负ID、扫描高水位内非UNUSED匹配公开ID，不直接tasks[id]），再实现已声明task_peek_exit。null输出/无效/S/自己/nullproc拒绝；活用户0不改输出；DEAD且Process资源空/有效reason才写快照返回1；不reset/free/消费。后续按原B11接reap与copy后提交，无新增作者测试要求。本次未代改产品，仅记录当前结果/推进位置。
+
+## 用户报告S态load fault：空proc仍调用reset（2026-11-06）
+
+作者修复lambda/C链接并加入Process存储、用户绑定/USER kind、process.o与公开ID日志后报告scause13/sepc0x8020731e/stval0。当前kernel.elf addr2line精确指向Process::resources_empty() process.cpp:14，objdump该PC为ld a0,0(a0)。源task_allocate虽已先g_process[slot_index].reset()，后又task->proc=nullptr并保留task->proc->reset()，导致reset→resources_empty以空this读取字段；应删除后者，保留前者和空绑定。
+
+同轮静态检查：change_page开头旧的无条件proc->root访问仍在新增USER保护之前，须删除；current_user_task把proc->root写在proc空检查之前，须按kind/null/root排序；sched_current_user_root误用tasks[task_count]（满4越界）且proc!=nullptr条件反向，应边界检查后访问tasks[current_task]并拒绝null。USER root为空分支仅打印后继续，宜沿用终止路径且修正“has valid root”日志。sched_init全Process预检/全槽重置仍是原未完成事项。此次只读定位与记录，未代改功能/重跑QEMU，故障地址证据.cache/process-sched-review-2026-11-06/fault-address.txt。下节构建失败为上一版历史，不覆盖作者已修的编译问题。
+
+## sched.cpp/Process草稿已集中审查，未通过构建（2026-11-06）
+
+用户请求检查。实际Process基本成员正确、目标C++语法检查通过；sched.cpp替换字段后无Process固定存储/绑定，静态proc皆null，idle/allocate reset空解引用且忽略返回、内核选根/current user/root getter同样缺null/kind保护。初始化缺全Process空资源预检与全槽元数据重置；allocate应先reset同槽真实存储再写Task/ID，用户创建须绑定/USER，adopt外重复清space可删。退出lambda未捕获reason/status/frame且return缺分号，make -B kernel/task/sched.o实际6诊断失败。仅隔离副本修lambda可编译，nm实测_Z10task_enterP10trap_frame，需externC；Make OBJS缺process.o，日志仍槽索引须task->task_id。独立只读审查无其他阻塞。Process头禁移动注释误称持有内核栈，栈实际由Task context持有。
+
+正式功能源未改/哈希保持；证据.cache/process-sched-review-2026-11-06/，未跑当前草稿QEMU或完整B11 P0。全部发现及修正位置集中归档B11文档，待作者修复后复验，不追加作者测试矩阵。
+
+## B11从Process开始的完整接线任务已明确（2026-11-06）
+
+作者确认昨晚完成allocate后问从哪写。已核对真实源，选槽/高水位/单调ID草稿存在，USER kind/公开ID日志/peek/reap仍待写。任务集中于TASK_MODULE_DESIGN的“B11实现起点”，B11入口链接，不另开批次。不代写核心。
+
+采用静态Task数组+同容量Process数组，Task借用可空Process*（S/idle为空，U关联同槽存储）；Process私有拥有UserAddressSpace+TaskExitInfo，无第二套PID/调度state/分配器。声明adopt(已验证无失败转移清source)、root、record_exit、release_resources(先kernel根/保留结果与失败描述)、exit_info、resources_empty(完整空关系)、reset(有资源零修改拒绝)。Process不可复制移动、不隐式析构释放。计划新include/process/process.hpp与kernel/process/process.cpp，sched.c转cpp保留C ABI，task_enter显式externC。
+
+allocate沿用作者算法，选槽后先reset对应Process，拒绝保持Task/ID/count，成功后提交Task字段/context/ID；用户启动前置检查全在allocate前，之后关联/adopt/USER设置不新增失败分配。sched_init无资源前提且拒绝在修改前。root访问/终止依Process，Task state仍scheduler维护；DEAD保留Process直到先copy成功再reap，reset后清绑定/元数据、UNUSED最后，不降高水位/不二次free。完整接口/顺序/C++迁移说明已给齐，原B11 P0协作者承担。当前仅静态任务和设计核对，未改产品/运行Process验证。
+
+## 下一次功能实现同步拆sched并建立process（2026-11-06，最新安排）
+
+用户明确指定“一会写的时候顺便拆解sched.c，重新组合出一个process模块”。已更新TASK_MODULE_DESIGN及B11入口，替代之前先完成B11再抽TaskTable/等共享需求再建Process的建议。此次仅记录计划，未修改产品代码或立即实现B11/process。
+
+下一轮先集中给出文件/最小接口/字段与状态归属及完整创建退出收集路径；作者推进核心，协作者审查和既定P0。process组织用户进程记录、地址空间与结果/资源生命周期；task/scheduler维护context、可运行/阻塞状态、唤醒选择与切换；私有表归属按生命周期确定，不能双重持有ID/状态/资源。先一用户进程一执行记录，内核任务无虚构用户空间；保留既有公开task_id且不新建独立PID计数。切kernel再release、稳定栈、退出结果留到先copy后reap以及安全阶段复用等B11约束不变。允许私有C++实现+必要C ABI，不额外引入堆/引用计数/动态栈/多线程/VFS或新作者测试矩阵。
+
+## 当前规范已按用户要求上传GitHub（2026-11-06）
+
+用户明确授权将当前规范上传；已在Personal-code-specifications/main发布提交98d933698604d6848702721f00001e5fc219cdbf（docs: add current TinyOS code style profile）。新增profiles/tinyos/CODE_STYLE.md（与TinyOS根文件逐字一致）、三个格式配置及profile README，根README增加入口；原通用手册和历史提示词保留。远程main SHA及固定提交文件内容经GitHub插件读回核对成功，本地规范clone工作树干净并跟踪同一HEAD。入口https://github.com/wsd32588/Personal-code-specifications/blob/main/profiles/tinyos/CODE_STYLE.md。
+
+GitHub插件写入403（integration权限不足），WSL HTTPS无凭据、SSH无已知host key；最终Windows Git使用已有凭据成功push。仅本命令对确切WSL仓库路径设置safe.directory，未改全局配置/读取导出凭据。TinyOS主仓库未暂存/提交/推送；本次提交仅个人规范仓库六个文件。发布证据.cache/style-task-context-2026-11-06/publish-verification.json。
+
+## 规范已接入，Task架构上下文已提取（2026-11-06）
+
+用户在前置讨论后授权接入规范、梳理后续分工并拆分Task。已新增根CODE_STYLE.md作为主线有效规则（来源个人规范固定提交+用户修订，不依赖.cache），AGENT.MD引用；新增.clang-format（21.1.8验证）、.clang-format-ignore和.editorconfig。包含{}优先/常见缩写/私有尾_/100列/T*/kPascalCase/g_、现代C++模板元编程按收益使用、头文件污染与依赖边界、编排/校验/所有权及freestanding/宿主差别。未改个人规范clone原文、未全仓格式化。
+
+实际小拆分：include/arch/riscv/task_context.h及kernel/arch/riscv/task_context.c中的RiscvTaskContext拥有frame+4096字节16对齐静态栈，负责初始现场/sp/gp；sched.c嵌入context并改访问路径，保留作者B11分配器。Makefile增加object。TaskExitInfo移到task/task_exit_info.h（字段类型不变），sched.h对Sv39PageTable/UserAddressSpace前置声明，避免传播MM完整描述。初次make在作者新增limits.h引入缺失Linux lp64 stub失败；局部改编译器__INT_MAX__保留同一int上限，未更改ID分发逻辑。
+
+默认make通过无诊断/nm-u空，原82宿主场景+汇总通过，三个头独立目标C11/C++20无诊断及排版检查通过。正式16秒QEMU双U完整正常/status0、末次退出后S timer持续，无fault/halt。独立20秒idle副本仅使A返回：两S返回、idle进入一次、两U各三次counter OK及正常end/status0，最后退出后15S tick/0U tick；布局context4112/Task4464/frame288/stack偏移16，五栈及初始frame均16对齐。对before归一化审查表明除提取/成员路径/等价limit无调度/ID/资源顺序变化，正式源哈希保持。证据.cache/style-task-context-2026-11-06/及idle-probe/；QEMU计时器停止不是客体关机。
+
+设计入口docs_from_riscv/TASK_MODULE_DESIGN.md：B11完成后再提取TaskTable集中槽/高水位/ID/查找/peek/reap，scheduler留选择/唤醒/切换；MM现有所有权层保留，不加空壳UserTaskResources。真正共享地址空间/文件表时再引入Process，暂不VFS。B11文档更新context路径及limits适配；USER kind/公开ID日志等原草稿仍待作者，peek/reap未实现，不标完整B11通过。无stage/commit/push/clean。
+
+## 个人规范clone与前置讨论（2026-11-06，历史过程，当前以上节为准）
+
+用户要求先拉Personal-code-specifications、讨论完善后再用于TinyOS。已完整git clone到忽略目录.cache/Personal-code-specifications，HEAD7e112b34c707fc5f8e0e70fd5e33811d38ed921d，工作树干净。初次沙箱socket被禁，按同一授权经工具网络权限重试成功；无推送。完整审阅README/1087行主规范/promptWord（历史AI模板不是本轮指令）。独立审查规范矛盾与TinyOS适配，讨论稿.cache/code-style-review-2026-11-06/REVIEW.md；未修改规范原文/AGENT或TinyOS源码/工具配置，未全仓格式化。
+
+用户已选定：先通用原则+C/C++，增加TinyOS配置，Go/Rust只修明显错误；C/C++4空格、同行左花括号、短签名单行/长参数再展开；C++私有成员保留尾_，公开记录字段普通snake_case。随后用户要求“先攒一下”：C++初始化优先{}（保留initializer_list等构造语义例外，C11仍用合法的={0}等）；底层允许ctx等行业常见且上下文明确的缩写。其余按上一轮建议暂定，含行宽100、T*/T&、constexpr kPascalCase、可变文件/namespace状态g_snake_case及职责/检查/所有权与三层组织。已记录于讨论稿及review-state.json，先积累不批量实施。建议先修正确性门槛/单一职责编排/按信任边界校验、所有权及可失败显式release、命名正文与速查冲突、错误示例，分公共/语言/项目profile；内核C++20禁异常RTTI自供std与宿主完整std/异常分开，不强制GoogleTest/expected/RAII析构吞错。Rust safe裸指针例子不安全且缺寿命是本轮明显技术错误；expected强制处理/NRVO必零拷贝的表述也需更正，已查官方Rust与C++草案。clang-format本机21.1.8，仅查版本未写配置/格式化。
+
+用户随后决定本轮先到此，正式使用时再迭代；需补头文件污染与依赖边界（命名空间/宏/编译状态不外泄、自包含、必要公开范围等）。旧规范来自初学C++阶段，早期压制语法只为辅助理解；现允许更积极使用模板/元编程/concepts/constexpr等，按实际收益与维护/编译/体积成本判断，不再默认排斥高级特性；项目标准、freestanding和ABI约束另论。上述已补讨论稿，未落地原规范或源码。
+
+当前按用户要求先积累已确认规则，暂不改规范原文或落地工具配置，B11分配器草稿保留待续、未整批验收，不因规范讨论丢弃其修改。不自动重写通用规范或项目规则，不stage/commit/push。
+
+## BATCH11完整任务已交付：非阻塞收集与用户槽复用（2026-11-05）
+
+作者问复用后要求下一步，已交付docs_from_riscv/tinyos/BATCH11_REAP_AND_REUSE.md，作者写核心/P0协作者。新增内核peek(-1/0/1快照)/reap(0/-1提交)、用户REAP7(a0公开id,a1结果VA，0未完不碰buffer/1复制后消费/-1失败不消费)，固定24字节uint64 reason/int64 status/uint64 cause逐字段序列化，不直接复制enum padding。U1保留原演示后收集初始U0 id2并输出reaped行；无父子/阻塞wait/spawn，所有其他已结束用户可收集，S/自己拒绝。
+
+task新增持久kind和单调公开task_id，current_task仍槽index；g_next uint64检查INT_MAX耗尽，成功分配才增。task_count保留高水位，allocate先扫UNUSED再append，DEAD不复用/reap不减count；回收后slot2新id4、旧2无效，日志用公开id。创建/peek/reap限定boot无任务或当前用户syscall且尚未reschedule/SIE0，不能在reschedule已改current但旧sp未换的回调复用栈。收集不二次free7页，坏copy可改合法前缀但保留结果，copy成功后意外提交失败按内部不变量处理。
+
+完整接口/文件/验收/3题一次交付。P0含原82+正常收集、alive0与坏buffer重试、一次消费/旧id拒绝、同trap安全阶段临时kernel创建短S验证同槽id4并实际运行/0PMM、FAULT与宽负数wire；不加正式工厂/monitor或作者矩阵。仅写任务/索引，独立设计审查通过；临时C/C++真实RV64布局/调用编译无诊断，61正式源哈希保持，证据.cache/batch11-task-preparation-wvf39a6k/。尚未实现/运行B11，完成基线仍B10。不clean/stage/commit/push。
+
+## BATCH10三题集中审查归档，整批收尾（2026-11-05）
+
+作者给三题合并原答，已在BATCH10保留原文并集中修正。第一题a0复用方向对，纠正23先为main返回值，由用户编译器按ABI放a0，_start随后call user_exit把它当参数，trap后内核才读，不是内核替main搬返回值；第二题明确reason区分REQUESTED/status13与FAULT/scause13，fault的status0占位；第三题保留空间与结果寿命独立的理解，纠正task_destroy并不销毁静态task/内核栈/exit_info，仅DEAD+切根+释放用户空间，结果仅init/allocate重置，当前无wait/槽回收。修正版为协作者整理，不冒充作者复答，不要求反复重答。
+
+功能、全部既定P0及三题集中审查归档完成。本次仅核对源码/改记录与索引，未改产品或重跑验证；最终证据仍为下节三目录。下一批未选择，不自动B11/rCore第五章/网站或移植，不clean/stage/commit/push。
+
+## BATCH10功能与全部既定P0通过，进入理解收尾（2026-11-05）
+
+作者已齐全实现init/allocate清结果、统一finish_user_task记录原因/状态或原scause，task_destroy保留记录并切kernel/完整release，保存id的产品日志在释放后/重调度前输出。最终只读审查无阻塞，未代改产品。默认make -B -j4无警告/nm空，user RX0x782/RWmem0x1038仍4内容页；make test原82具体组+汇总通过。正式16秒QEMU双tag全部标记、Time/Hello/Data/exit各2、id2/id3 REQUESTED0日志正确，末次后8个S tick无U。证据.cache/batch10-final-ap6k83br/，61正式源配置哈希保持。
+
+独立.cache/batch10-normal-final-vqg1gg7k/ normal(0/0)、main23(23/0)均实际记录和产品日志正确（0x17），_start/syscall汇编未改；均先kernel、各7唯一free根最后、幸存者完整空间保持、14页恢复/shared保持、双结果跨2timer保留。独立.cache/batch10-final-fault-wide-dc06i32x/：U0真实FAULT13仅1次且PC未推进/scause不同sstatus；U1全演示后直接exit(-2^40)，REQUESTED完整值日志0xffffff0000000000；相同7+7及结果留存通过。初始NONE、无用户资源时两次init清poison、四次allocate清poison均通过；NULL/上界两入口零修改通过。所有副本无警告/未定义、61正式哈希保持，各16秒runner SIGTERM停止非客体关机。
+
+本批功能及全部既定P0完成，接下来原三题整体梳理/集中归档，当前无作者原答，不标理解收尾完成。完整细节与限制只BATCH10维护，不追加作者测试/新批次/rCore第五章，不clean/stage/commit/push。下方日志/初始化待办及错误均是历史草稿状态。
+
+## BATCH10初始化已齐，剩结果日志格式（2026-11-05）
+
+只读核对作者最新源：sched_init已清所有槽/idle结果，task_allocate集中清零、两create重复已删；finish_user_task正确取scause且无重复写结果，主体组织已齐。新增日志以unsigned char current_task传uart_putchar，会发0x02/0x03控制字节而非数字，且未输出reason对应status/scause。下一步将该块换成保存int id、task_destroy后按exit_info.reason输出id及status/cause（uart_put_hex），再重调度；当前destroy不改current，但应在流程前保存。此次未改产品/重跑验证，待作者补日志后集中执行本批剩余P0，不再重复下发已完成初始化要求。
+
+## 作者已抽finish_user_task，剩余集中收尾（2026-11-05）
+
+作者发timeout尾日志后只读核对：两个公开终止入口已转发finish_user_task，共用校验/结果/诊断/destroy/reschedule；两种create各自已清exit_info。发现聚合初始化fault_scause误取frame->sstatus，但后面FAULT分支再次赋frame->scause掩盖错误；应一次正确初始化scause并删三行重复结果赋值。两create清零可统一task_allocate，sched_init全槽/idle旧结果清理及释放成功后的结果日志仍未补。这些为原批次要求。本轮make无重建动作，只做源码核对，未代改产品或重跑QEMU，不以用户timeout尾日志宣称本批通过。
+
+## 按请求局部实现task_destroy（2026-11-05）
+
+作者已先删status0拒绝、修字段拼写并保存主动退出结果，再明确请求增加task_destory。协作者仅改sched.c：private current_user_task集中NULL/索引/任务数/RUNNING/U root/SPP检查；static void task_destroy(structtask*)标DEAD、切kernel、release完整space并保留原失败停机，不清exit_info/static task/kernel stack；两入口分别保存REQUESTED/status或FAULT/scause再复用，最后重调度。helper限定校验后的当前U任务，不新增通用公开task删除/槽复用API。
+
+make -j4无诊断；正常16秒QEMU双tag完整标记/原成功消息/exit均通过，末次EXIT后无U timer且8次S timer。证据.cache/batch10-task-destroy-5ob93c64/。独立.cache/batch10-destroy-probe-fe68zdi5/证实U0仅1次fault→DEAD/FAULT13→实际kernel satp后7精确free、根最后；U1完整描述/表/四内容保持并继续，REQUESTED0再7free，双owner空/14页恢复，结果跨2timer保留。NULL/上界对两入口原样返回且任务/frame/PMM/satp/alloc/free/activate零改动；无警告/未定义，61正式源配置哈希保持，16秒runner停止。本批尚待作者补exit_info初始化、结果日志及其余原定P0，未代写整批/改其他产品；下节草稿问题为历史，当前以本条为准。不clean/stage/commit/push。
+
+## BATCH10退出/fault草稿集中检查（2026-11-05）
+
+作者请求检查，当前user_exit long/fail1/EXIT取a0/fault专入口及task.exit_info成员已接；仅审查未改产品。发现status==0错误拒绝正常退出；fault只reschedule导致RUNNING→READY而重复同fault、未DEAD/切kernel/release；结果成员未写/初始化/输出，暂无共用终止助手；两个入口缺上界/RUNNING/U归属/SPP前置检查。原任务即要求这些，不追加范围。需删除status有效性判断、抽共用完整终止流程、两个入口只转交reason/status，初始化记录及保存id日志；REQIESTED/resaon拼写统一，结果类型可实现私有。
+
+make -B -j4无警告；正式16秒QEMU两用户end/EXIT后仍5个U timer、2个S timer，结合控制流和退出汇编loop确认正常退出被挡。证据.cache/batch10-draft-review-p38rd2vh/，8审源哈希保持，124为timeout；未插页计数，不称实测14页未回收。本次未重跑82宿主/完整P0，待作者修好集中验收，先前B09/O3通过不能覆盖这次草稿回退。细节统一BATCH10，不clean/stage/commit/push。
+
+独立fault诊断.cache/batch10-fault-draft-fypix00e/：仅副本U0实际读未映射地址，9秒同cause13/stval重复6次，每次task2回READY、外/内root+4记录保留、PMM未增加；U1仍运行。无警告，61正式源配置哈希保持；runner停止观察。该证据仅复现故障循环，非完整P0通过。
+
+## O3先验、头边界与等价检查精简已完成（2026-11-04）
+
+作者明确授权助手改头及精简检查，先试O3。开始时作者已改runtime/user_image为.hpp、main fail传1及user_exit C分支long；助手先补旧test include和C++long声明，再原逻辑副本全目标O3无警告/未定义、双U正常；独立O3宿主82组通过。随后user_image声明/定义统一C++链接、test/c_api.hpp取消外围externC；runtime.hpp保留汇编/ABI C符号，MAX64私有化，删_is_ready恒假状态及finalize空循环早退；删image全零特判、loader重复零大小/零count、task_create重复容量，简化内外root条件及共享槽复制。关键权限/归属/活动根/分阶段释放/重试检查保留。Make OPTIMIZATION默认-O0，可make -B OPTIMIZATION=-O3统一三flag；最终已强制恢复默认O0产物。
+
+精简后O3/O0各完整28目标命令且正常双U QEMU通过（退出后各8tick），最终O3宿主82组/16命令纯O3通过；真实O3 runtime重复init/DSO/逆序/重复finalize/entry返回全绿；O3拒绝探针零段大小0alloc拒绝、槽满两创建零修改且额外7页可回收后继续正常双U。证据主目录.cache/cpp-boundary-o3-tfycuwms/，独立宿主.cache/o3-host-final-3z5d9gf_/、runtime.cache/runtime-o3-final-npj6zk__/、拒绝.cache/simplify-negative-a8xg91tx/；全过程及先验目录见BATCH10前置整理节。中途image定义C linkage遗漏已修并完整复验，历史红日志独立保存。
+
+本次是可维护性精简，无性能数值承诺；未代写B10调度器结果记录/fault入口，仍待作者继续。保留用户所有其他改动，不clean/stage/commit/push。头边界讨论下节为修改前历史，当前以本条为准。
+
+## 头文件与C++边界讨论（2026-11-04）
+
+作者提出将部分内部.h改.hpp、减少非必要C边界。已核对真实include：cpp_runtime.h和user_image.h目前均由C++源/测试消费，可按需要改.hpp；user_memory/user_address_space/vm仍由sched.c等C模块直接或间接包含，boot_private.h仍由kernel_vm.c/demo_tasks.c消费，暂须C兼容；syscall.h/trap_offsets.h还有汇编消费者。扩展名不决定公开/私有，单源私有类型可放.cpp，多C++源共用可private.hpp。extern C只约定链接，不能让C解析C++类型；kernel_main已经位于main.cpp，入口不要求C源码。用户main若转C++还要补独立用户编译规则/选项，不能只改名。本轮只读解释，未授权或执行全仓改名，B10功能目标保持用户终止结果。
+
+## BATCH10完整任务已交付：用户退出结果（2026-11-04）
+
+作者要求继续后，核对真实_start/用户封装/EXIT与fault/调度路径，交付docs_from_riscv/tinyos/BATCH10_USER_EXIT_RESULT.md。当前EXIT无参且未保存main结果，fault共用旧出口；本批user_exit(long status)、fail传1/main返回0，初始_start和syscall.S已有a0直通通常不改；sched_on_exit(frame,status)和sched_on_user_fault(frame)复用私有终止流程。task增加私有TaskExitInfo，reason NONE/REQUESTED/FAULT；主动保存完整long，fault保存scause且status0仅占位。先检查frame/索引上界/RUNNING/U归属再改状态；保留切kernel/完整释放/失败停机，结果留在DEAD记录，初始化/分配清结果，S task_exit保持。
+
+作者亲写核心，完整文件/接口/日志/检查/P0一次交付；P0由协作者做82宿主+正常双0、main23、U0 load fault且U1继续并显式退出-2^40验证宽值、无效上下文零修改及各次7+7回收。无wait/fork/槽复用/查询syscall/C++调度迁移或buffer作业，不自动启动rCore第五章。仅写任务与索引，未改正式产品；隔离临时header的C/C++ noreturn签名及C转交真实RV64编译无诊断，正式源配置哈希保持，证据.cache/batch10-task-preparation-gadqheyf/。这不是B10已实现/QEMU通过；当前完成基线仍B09。未clean/stage/commit/push。
+
+## BATCH09三题集中审查归档，整批收尾（2026-11-04）
+
+作者已给三题合并原答，原文/审查/修正版统一归档BATCH09。保留同VA不同映射和a0复用的正确理解；纠正数组为spaces[0]/[1]且成功转移后来源空，隔离由两root映射而非tag建立；补齐boot i→初始frame.a0→恢复→_start→main。退出释放完整UserAddressSpace共7页（四内容+两下级表+一私有根），不只内层UserMemory；kernel/shared及U1保持，活动根释放风险不能承诺立刻page fault，TLB可能掩盖。部分转移后boot只清未转移局部拥有对象由协作者补充，不冒充作者原答，不要求反复重答。
+
+功能、全部既定P0和三题集中审查完成，本次只核对源码/更新文档索引，未改产品或重跑测试；证据保持下节三目录。下一批尚未选择，不自动开B10/rCore第五章、移植或网站，不clean/stage/commit/push。作者亲写核心、协作者解释/集中审查/必要复验的分工保持。
+
+## BATCH09功能与全部既定P0通过，进入理解收尾（2026-11-04）
+
+作者已完成同一ELF两份装载、入口tag0/1、三轮100/200独立计数与start/counter OK/end整行日志、fail(reason)，并恢复初值/睡眠后检查和tag>1前置拒绝。协作者未改正式产品。make -B -j4无警告、kernel无未定义；原82具体宿主组+汇总通过，用户RX0x752、RW memsz0x1038仍4内容页。正式20秒QEMU两tag start/end各1、counter OK各3、Time/Hello/Data/exit各2、末次exit后12个S tick；作者补回guard后再次增量构建无警告，16秒正式QEMU相同标记且退出后8tick。124为timeout。证据.cache/batch09-verification-__jztirh/，guard后仅main新增该拒绝，diff已保存。
+
+独立真实QEMU .cache/batch09-runtime-p4kr4amp/：14唯一私有页、同4VA不同PA、完整转移源空；U0→U1切根5、每U各6次选择/1真实timer/3yield/1sleep，syscall当前root正确，计数101–103/201–203。U0先切kernel再回收7页，根最后且槽1空，U1完整描述/全部内容/私有表保持并续9个syscall；U1再回收7，双owner空、14页恢复/shared保持、2idle tick。仅副本A有限+每U约1.5周期GET_TIME计算，14秒runner SIGTERM；无警告/未定义，61正式源配置哈希保持。独立拒绝探针.cache/batch09-negative-tehgzhrb/重跑第二load非法entry：0内容alloc、第一7+第二根1共8唯一free、来源空/PMM恢复/shared及satp保持、0用户创建/调度；5秒runner SIGTERM，61正式哈希保持。
+
+本批功能及原定P0完成，下一步整体路径梳理与BATCH09原三题集中归档，尚无作者原答，不标整批理解归档完成。完整证据/限制只在BATCH09维护，不追加作者测试或buffer扫描，不自动开启下一批/rCore第五章。未clean/stage/commit/push。下方草稿缺陷为历史；end等价原任务done，无需改名。
+
+## BATCH09用户演示草稿检查（2026-11-04）
+
+作者已补fail(reason)、100/200预期值和三轮计数，但main引用内核uart_puts/uart_put_hex，counter_message构造后未输出，R/时间/sleep/X误包在三轮循环内，原counter初值7与睡眠后最终计数检查被删。make user -j4实际复现counter_message unused警告及UART符号未定义，尚未进入QEMU；应改用户user_write整行输出、收窄循环范围并恢复两项检查。本轮仅审查/解释与记录，未修改产品；B09仍实现中。
+
+## BATCH09 boot双空间准备/失败清理已局部修正（2026-11-04）
+
+作者请求检查boot_start_user后继续求助修正。协作者仅修改boot_stages.cpp：抽release_pending_user_spaces；sched_init和两S创建提前、失败立即停机；for每份分别create/load同一个spaces[i]；两份均准备后再逐个task_create_user传i；失败清全部未转移来源并立即停机，删除is_ok和重复/越界清理，清理诊断索引用十六进制打印。保留用户的4参数调度接线与main，未代写用户tag计数演示。
+
+实际先复现修前正常QEMU停Demo user memory load failed、未进入scheduler；修后make -j4成功，默认QEMU Time OK/Hello/Data OK/exit各2、末次exit后10个S tick、无fail/fault，124为16秒timeout。临时真实QEMU第二次loader以复制layout的entry=data_address注入INVALID且0内容alloc；正式清理回收第一份7页+第二根1页、8次唯一free、两来源空、模板/共享表/satp保持，未调用task_create_user/scheduler_start。61正式源配置哈希保持，无新增诊断；完整副本构建保留已有user_tag unused警告，因用户main尚未使用参数。
+
+证据.cache/batch09-boot-fix-93y2acnn/（before/after日志与qemu/可重跑探针）。本轮其它已核对调度/用户源哈希未变；未新增正式测试或clean/stage/commit/push。B09仍实现中：下一步作者写tag0/1、100/200三轮独立计数和标记，整批双U切换/14页回收验收尚未执行，不能把两份旧演示跑通当完整B09完成。
+
+## BATCH09完整任务已交付：双用户任务与同址数据隔离（2026-11-04）
+
+作者在B08理解归档后要求下一步。已核对真实boot/sched/loader/用户入口并交付docs_from_riscv/tinyos/BATCH09_TWO_USER_TASKS.md，作者亲写核心，协作者P0。范围同ELF两次独立create/load、保留两S所以MAX_TASKS=4；task_create_user新增最后一个uintptr_t user_argument，写frame->a0；main(unsigned long user_tag)收0/1。现有_start第一条call main已经保留a0，不需新汇编/runtime或getpid。tag不等于task_id2/3。
+
+boot先准备两份空间，再逐次转移；成功清整个来源，失败清尚未转移的局部对象。首个已转移后第二个创建失败不承诺全14页回滚，不加task_destroy。用户保留原两页数据/BSS，用同VA counter的100/200起点做三轮yield后私有值检查，保留原sleep2/时间/buffer演示，不加每轮buffer检查；每人7页、合14页正常退出回收。P0已一次给齐（原82宿主、默认双tag、真实双U选根/幸存者、第二load非法入口0内容alloc及8页清理），P1/P2选做。
+
+本轮只写任务/索引/记忆，未改正式产品或执行双用户QEMU。目标GCC -ffreestanding对带unsigned long参数的main语法检查0无诊断；内部独立设计与文档审查无阻塞。证据.cache/batch09-task-preparation-mywvbyof/，当前已通过功能仍以B08为准，不把任务准备当B09已实现。不自动推进rCore第五章、forkexec、堆或用户C++移植，不clean/stage/commit/push。
+
+## BATCH08三题集中审查归档，整批收尾（2026-11-04）
+
+作者已给三题合并原答，原文/审查/修正版统一归档BATCH08。保留其对槽1私有、共同映射支撑trap执行、释放前切根、根free失败后只重试根的正确方向；集中纠正：根槽0/1/2是并列分支，0/2不是1上下游；槽1先指用户下级表，最终叶PTE再指内容；内核共享分支仅借用不能随用户释放；活动根free不是保证下一条必fault，TLB可能暂时掩盖，风险是后续翻译依赖已撤销/回收的表；外层保留两根指针仅指最终root free失败状态，全部成功会整体清空。
+
+本批功能、全部既定P0和三题集中审查已完成，不要求反复重答；修正版是协作者集中解释整理，未冒充作者已复述。此次只更新文档和索引，未改产品/测试或重跑既有验证。82宿主组及真实QEMU最终证据仍为.cache/batch08-final-6ubwkiz6/。下一批待作者选择，不自动开始B09或rCore第五章；作者亲写核心、协作者解释/集中审查/例行复验的偏好保持。
+
+## BATCH08功能与全部既定P0通过，进入理解收尾（2026-11-03）
+
+作者已补loader完整范围槽1限制和exit切根失败停机；集中复核无新阻塞，正式产品未由协作者改写。make -B -j4无警告且最终无未定义，正式QEMU Time OK/Hello/Data OK/exit各一次、退出后2次S tick，124为timeout。协作者补原定双root同VA隔离宿主组后make test共82具体组+1汇总通过，原75保持；同时存活的两空间映射不同PA，写/释放一方不影响另一方和借用表，全部私有页回收。
+
+最终临时真实QEMU使用正式loader/调度/用户逻辑：跨槽数据区0x7ffff000（匹配LOAD且memsz多页）在0次内容alloc拒绝，root/模板/描述/页数/satp保持；完整外层转移源空；首次S=1、S选根2、U选根4、idle选根4、真实U timer=1；WRITE/GET_TIME/yield/sleep/exit入口均持用户root。exit先内核根，根free前观察槽1空及前6页已释放，7页精确各free一次、拥有对象空、模板及全部共享表保持，退出后2次idle timer。临时仅使A有限和U延长1.5个timer周期暴露场景；12秒runner SIGTERM停止。61正式源配置哈希一致，不是正式演示被改成有限任务。
+
+证据.cache/batch08-final-6ubwkiz6/：build.log、default-qemu.log/default-results.json、host.log/host-results.json，qemu/含probe.cpp/probe.h/run_probe.py/results.json。此前生命周期根free失败重试与ASID模拟拒绝证据仍见.cache/batch08-lifecycle-fix-27vq9_oh/。本批功能/P0完成，下一步按BATCH08“当前功能路径梳理”及原3题归档理解，不自动启动B09/rCore第五章。限制保持单用户静态槽、单hart/ASID0、无forkexec/堆，P1/P2不阻塞；未clean/stage/commit/push。作者恢复亲写核心偏好已确认，后续默认解释/审查/复验。
+
+## BATCH08调度正常链路已复验，剩两处原定收尾（2026-11-03）
+
+作者亲写task外层接管、模板登记和三处切表后报告“过了”。集中只读复核确认成功转移整个space并清源，首次/next/idle切表及exit正常先回内核根再释放均已接上，boot处理sched_init失败；未代改产品。make -j4无警告、make test81具体组通过；正式QEMU Time OK/Hello/Data OK/exit各1次、退出后2次S tick，无fail/fault/release错误，124为timeout。证据.cache/batch08-scheduler-review-7f9fvqs9/，此次默认观察未加CSR探针或强制idle。
+
+独立静态审查仅剩原定两项：loader完整code/stack/data范围还未限制槽1（应在首次内容分配前拒绝，检查完整范围首末）；sched_on_exit激活内核根失败仍return frame，应打印停机。其他task_create_user组合判断虽绕，但后续find_page覆盖空/数量非法/root不匹配，不追加风格改写。两项补好再集中完成原P0切表/idle及范围拒绝复验，随后功能梳理和原三题，不扩测试矩阵。下文“未代接调度器”是上阶段历史，当前由作者接线已正常运行。
+
+## BATCH08地址空间创建/释放已修正并实测（2026-11-03）
+
+作者明确要求协作者“直接改错”，本次授权覆盖当前生命周期修正。已修user_address_space.cpp的create前置拒绝、两根地址/模板/共享槽/内部归属检查、完整空与root-only状态区分、真实MODE/PPN活动拒绝、内层原错误传播及根free失败保留重试。辅助函数分开检查，release仅组织阶段；UserMemory两个已有校验成员保持，不新增外层策略参数。保留外层头C ABI和值成员user_memory；boot两处失败路径改释放完整space，删除失败后抹描述。未代接调度器。
+
+make -j4完整内核链接通过，目标C符号正确且无未定义；make test现81具体组+1汇总通过（新增6组，错误基线先实测失败）。真实QEMU临时main使用正式boot/PMM/VM/loader/runtime：root-only活动拒绝零修改、切回回收1页；正式ELF四内容页总7页，活动拒绝后切回回收7页，描述空，共享根/L1/L0哈希及5项内核映射保持。61正式源配置前后哈希保持；无警告。QEMU未启动调度/U态，8秒由runner SIGTERM停止；不能当整批用户运行验收。证据.cache/batch08-lifecycle-fix-27vq9_oh/，host-final-ctest.log为绿，host-baseline-run.log/host-after.log为历史红。独立审查无阻塞。
+
+下一步仍由作者推进loader槽范围前置限制、任务接管完整外层、sched_init保存模板和三处切表；B08尚未完整完成。不再把下方历史草稿缺陷当当前未修。未新增作者测试作业或clean/stage/commit/push，作者其他改动保留。
+
+## UserMemory内部分离校验职责（2026-11-03）
+
+作者澄清要拆的是同一类内的函数职责：release不直接展开页记录/映射校验。已在作者抽出的validate_pages基础上，局部补const、有效数量前置检查、只读span，并将原映射校验原样提取为validate_mappings() const；release依次检查两个返回值后执行原unmap/flush/free/reclaim。两个校验入口分别检查记录和映射，不把单独一个成功当完整验证，不给UserMemory新增内核模板/用户槽策略参数。先前release_for_address_space(expected_root,kernel_root,slot)提议已撤回。
+
+此次只改user_memory.h/.cpp与本批文档/记忆；现有make test通过（CTest 1/1）、真实目标user_memory.o编译无诊断，独立静态审查无阻塞。未修改外层create/release或调度接线，未整仓链接/QEMU，B08下述问题仍待作者实现；无新增作者测试作业、clean或提交。
+
+## BATCH08外层地址空间草稿审查（2026-11-03）
+
+作者已新增user_address_space.h/.cpp，内部UserMemory为值成员；boot已create私有root并将ELF输出写入space.user_memory。此次按“先检查”只审查、不代改产品。release仍有入口空状态/NULL处理错误、root-only直接成功不free、释放前误拒私有槽1非空、其他槽校验不互斥、satp非零替代活动根判断、外层归属约束缺失、内层错误改写及根free失败清空记录等问题。create缺空输出/完整模板/根地址检查，新头缺C链接保护。sched仍只转移内层、尚未保存模板/接三处切表，boot失败仍释放内层，B08未验收。
+
+真实RV64单文件编译无诊断，nm确认两个外层函数仍为C++改编符号；隔离宿主桩探针复现root-only无free、空对象返回-1、正常已装载被拒、根free失败仍返回0且丢指针、内层-1改写为-7、模拟活动根仍free、Bare跳内层、无效模板/非空输出被接受及NULL触发UBSan。桩只证实控制流，不代表真实CSR/PMM或QEMU验收。证据.cache/batch08-current-review-omk3grsf/，6个正式源配置哈希保持，内部独立静态审查一致；未整仓构建/宿主回归/QEMU/clean/stage/commit/push。详细集中问题见BATCH08审查节，作者继续修正。
+
+## 恢复BATCH08主线（历史，2026-11-01）
+
+作者确认可以边做功能边按模块转C++、按实际需要补运行时，随后明确“那么继续”。已重新核对真实源码和git status：尚无user_address_space.h/.cpp，B08当前进入作者实现准备，完整任务与P0保持。先围绕外层拥有root/借用模板/内部UserMemory说明create、显式release和重试状态，再按原任务接loader槽限制、调度切satp和boot。保持作者亲写核心，不代铺整批框架或把根页释放塞自动析构，不扩大调度器整体迁移。最小C++runtime已实测可作为底座，现有全部未提交改动保留；本次仅恢复状态文档和解释，未改产品或重跑测试。
+
+## C++最小运行时实际复验通过（2026-11-01）
+
+作者追问“刚才检测了吗、那些怎么做解释全面”。已明确此前只解释/读源码，没测最后一次性保护或析构，不能把“没问题”当实测。此次真正执行make -B -j4无警告、75具体宿主组+1汇总通过；正式QEMU D/count1、Hello TinyOS/Time OK/Hello/Data OK/exit及后2S tick正常，124为timeout。runtime/kernel_main C符号和init表映射/PMM边界正确，无未解析。
+
+临时真实RV64/QEMU短启动用正式runtime算法及entry初始化：一个init表项自动构造同TU两对象AB/外计数2；构造主动破坏a0/a1仍收正确hart/DTB魔数；二次init=-1且计数不变；正常局部Ll；NULL回调-1；手工x/A,y/B,z/A登记，finalize(A)逆序zx且重复无变化、B只y；finalize(NULL)执行自动全局析构ba，重复及main返回后的entry再次finalize均无重复，最终trace ABLlzxyba。临时源码仅main和entry末尾只读钩子，59正式源配置哈希保持；QEMU3秒SIGTERM返回0非客体关机。
+
+证据.cache/cpp-runtime-verify-2026-11-01/，qemu/probe_main.cpp与run_probe.py可读/重跑，结果JSON/日志/反汇编证明真实自动__cxa登记。CPP_STANDARD_LIBRARY.md已有全面机制说明。64槽是累计成功注册上限，执行后不复用；未测满表、终止时新增登记、完整重入/并发/TLS/异常等，不扩矩阵。_is_ready冗余但s_init_started功能正确；手工无效登记调用者处理返回值。正式Test无非平凡析构，析构结论来自临时试验。作者删除自定义cpp_runtime_fini，entry受控返回直接finalize(NULL)。本次未改产品/测试、未clean/stage/commit/push，B08尚未开始。以下为此前草稿/构造输出历史。
+
+## C++全局启动构造首次作者实测（历史，2026-11-01）
+
+作者报告D0x0000000000000001后Hello TinyOS；当前静态源码确认boot/main.cpp的Test为全局对象、kernel_main已extern C，entry已清BSS/保存a0-a1/call init，runtime已入Makefile且ld符号修正。启动构造路径已有作者真实输出，协作者本轮仅核对/记录，未独立重跑完整构建或QEMU。数字1原不可见因为转char发0x01控制字符，现用uart_put_hex。
+
+不能据count=1认定只初始化一次：该count是成员，每次构造先归零；init仍constexpr _is_ready=true，需用持久可写状态拒绝重复。Test无非平凡析构，该输出不证明atexit/finalize已运行，仍待受控终止验证，不在正常用户exit销毁内核全局对象。B08保留，作者继续运行时，本轮未代改产品/提交。下面为首次草稿历史，缺陷是否已修以最新源码和上文为准。
+
+## C++运行时首次草稿审查（历史，2026-11-01）
+
+作者已新增include/runtime/cpp_runtime.h与kernel/runtime/cpp_runtime.cpp、linker的init_array。只读集中检查：构造表遍历方向正确；ld符号少__且end=实际被当文件名，隔离链接失败；显式.*和普通项通配应整理，前面的.init_array*已覆盖普通项，勿误说全部漏收。__cxa_finalize头/定义误int应void；atexit/finalize空桩尚无实际析构；fini引用未定义fini数组，当前ABI最小路径应转真正finalize(NULL)；init缺一次保护。Make缺runtime.o，entry尚未call init及BSS/启动参数/失败接线。__dso_handle=nullptr本身不算错误，编译器传唯一符号地址。
+
+目标单文件编译0但4未用参数警告；隔离ld报cannot find init_array_end=，未整仓/宿主/QEMU。证据.cache/cpp-runtime-review-2026-11-01/，5个正式文件哈希保持，独立只读审查一致。详情写CPP_STANDARD_LIBRARY.md同节，作者继续实现，本轮仅文档/隔离复现，未代改产品或提交。B08继续保留待接。
+
+## 当前先试C++静态对象生命周期，BATCH08保留（2026-10-31）
+
+作者决定先亲手补构造/析构与init_array，完善更多位置使用C++所需运行时；不自动代写。已核对entry/linker/Makefile/main与CPP_STANDARD_LIBRARY.md，并在该既有主题文档补本次最小范围、ABI、BSS/启动参数/映射边界注意点及分级验收。局部非static正常ctor/dtor已有；本次全局动态构造须init表，非平凡静态析构须注册与受控终止，不等同fini_array。B08任务保留，先此试验，不恢复rCore或扩用户C++运行时。
+
+隔离真实Clang/RV64对象探针确认默认与-fuse-cxa-atexit产生.init_array、__cxa_atexit/__dso_handle；-fno-use-cxa-atexit变atexit，仍有运行时依赖。注册返回失败未被生成代码检查，需启动失败可见不能静默漏析构。证据.cache/cpp-runtime-preparation-2026-10-31/含源/对象/符号/节/反汇编/JSON；尚未正式链接或运行构造析构。
+
+关键现状：BSS包含bootstack，entry未显式清零；不能在使用该栈的C函数里清整个BSS，边界也未保证8字节对齐。新增init call须保住OpenSBI a0/a1（hart/DTB）；数组放__kernel_end/既有映射边界内。kernel_main前PMM/分页/调度未初始化，先用静态标记试验。内核调度后不返回，用户exit不是内核全局终止，不在该处或panic盲目finalize。作者当前另改Makefile、array/limits等兼容头和新增panic.c，全部保留，本轮未全面复核这些草稿。只准备文档/隔离编译，未改产品/清理/提交/推送。
+
+## 当前BATCH08任务已交付：独立用户根页表（2026-10-30）
+
+作者要求下一批并询问是否已到rCore第五章。按真实能力TinyOS仍在第四章后段：分页/ELF/抢占/copy已有，但共享root、单用户/静态槽，尚无独立空间及fork/exec/wait父子生命周期。rCore独立学习线已完成第四章，仍仅按需补知识，不因本次对照自动开始第五章。
+
+完整任务docs_from_riscv/tinyos/BATCH08_PRIVATE_ADDRESS_SPACE.md，待作者实现，本轮只写任务/索引。限定一个用户任务的私有root+显式生命周期与按任务选satp：新UserAddressSpace{拥有root,借用kernel_root,原UserMemory}，不改内层布局/原loader签名；仅借用模板根槽0/2，用户独占槽1[40000000,80000000)，loader先完整范围检查且0内容alloc拒绝跨槽。模板无用户映射、共享分支持续存活不变，trap代码/栈通过共同映射可达，汇编不改。
+
+create仅分配1根并复制借用项；release真实satp拒活动root后先内层释放，再确认用户槽空再free root，根free失败保留root-only支持retry，借用表不free；保留旧loader自身回滚再失败的限制。sched_init登记kernel_root，首次/选next含idle时activate目标根；exit/fault先回内核根再释放，task_create_user转移完整外层并清源。原A/B/U三槽、B07普通采样演示保持，无堆/forkexec/双用户实现。P0由协作者承担原75组、同VA不同root的PA隔离/共享表保持、范围/活动拒绝和根free重试、真实satp及7页回收（1根+4内容+2表）；用户无需新测试矩阵。
+
+准备时只读源码/章节对照，内部子代理设计审查，未写新产品或跑构建/QEMU；当前所有B07未提交产品/测试/文档保持，不clean/stage/commit/push或建worktree。文档自检及88源/配置哈希和暂存区保持结果见.cache/batch08-task-preparation/。近期已通过验证仍以B07为准。
+
+## 远期文档网站安排（2026-10-30）
+
+作者提出等项目达到约相当于rCore第八章的阶段，再考虑借用GitHub做文档网站，将学习/实现过程和注意点整理发布。当前仅记录远期意向，继续维护现有独立批次文档、原答修正和验证入口，作为届时素材；站点结构、工具和发布范围到时再定。本条不授权现在搭站/发布，也不改变rCore按需补充、不自动继续第五章的现有安排。
 
 ## Git进度保存（2026-10-30）
 
@@ -8,11 +486,21 @@
 
 本次make -B -j4无警告，make test共70个具体PASS+1汇总，QEMU正常Hello/Data OK/exit各一次，退出后2次S timer，无fail/fault/release错误，124为限时结束。起始远端main=9b07feb，与本地相同；只做正常推送，不强推/变基/清理。验证日志在.cache/git-checkpoint-2026-10-30/，推送结果以该目录后续记录及Git远端核对为准，不能把下方历史“未提交/推送”当当前状态。
 
-## 当前BATCH07任务已交付：安全写回用户内存（2026-10-30）
+## BATCH07已完成：安全写回用户内存与GET_TIME（2026-10-30）
+
+三题原答/审查/修正版已归档BATCH07，完成一次集中纠错，不再要求重答。Q1认可表/内容分离与权限检查，补root所指页表含512PTE（页号/标志）、const不深度约束映射内容；Q2前三字节改变正确，返回应为-1，后5保持，结果不可用；WRITE已用内核buffer暂存，复制全成功才UART；copy_to本实现不回滚前缀。Q3明确time原始计数、sleep2指2次已处理timer中断、8是uint64字节；成功必须找到已有可写用户映射，缺映射失败，内容变化不改PTE故无分配/flush。索引/路线同步，本批功能、P0与理解归档均完成，下一批现见上方B08任务。本次只改文档，未动源码/测试、未重跑已通过构建或QEMU、未stage/commit/push。归档自检见.cache/batch07-comprehension/。以下为功能验收与准备历史。
+
+作者完成写回核心与GET_TIME接线后明确说“你继续把”，协作者保留核心/命名，局部将long助手失败return -1/root先校验、main第二次采样比较及Time OK补齐；正式演示只做两次栈采样，无新增buffer全量检查。make -B -j4无警告，最终无未解析/init-fini-preinit数组；RX0x302、RW filesz0x11 memsz0x1038仍4内容页。make test75个具体运行组+1汇总、无警告，原70和12读取组保留，新增5组覆盖写回/分隔PA/写权限/合法前缀/入口范围。正式QEMU Time OK/Hello/Data OK/exit各一次及后2个S tick正常，124为timeout。
+
+一个临时真实QEMU副本验证4次GET_TIME（正式2+3/5跨页+代码拒绝）：结果逐字节等于内核source，保护字节/其余4内容页/root-L1-L0全表/归属/satp保持，每copy alloc/free/flush增量0；代码页完整不变且返回-1后用户继续。退出6页恢复、4映射撤销、描述空、root完整恢复/活动与5内核映射样本保持，后2个S tick。探针前后56个正式源配置哈希一致；默认PA布局未强制分隔，分隔证明在宿主。脚本8秒SIGTERM停止的返回0非客体关机。
+
+证据.cache/batch07-finish/：before草稿、build/default/host日志与JSON、ELF检查；qemu/下run_probe.py/probe_hooks.h/probe_impl.inc、日志/results.json可重跑。独立产品和测试只读审查均通过。只保留既定单hart/可访问PA/source有效/失败前缀限制，未扩P1/P2/堆/独立root/rCore。功能验收时的理解待办已在上方本次三题归档中收尾；不追加程序测试作业。本轮未clean/stage/commit/push。以下为准备与实现阶段历史。
+
+作者已在实现B07，写回核心/GET_TIME及用户包装已有草稿，main已加睡眠前普通采样，尚未集中验证。作者质疑频繁buffer检查后，收简分工：作者演示只需sleep前后两次普通栈uint64_t输出、成功/递增检查及Time OK；保留B06现有数组检查，不新增全量扫描。真实3+5跨页、保护字节和代码页拒绝仍属必要P0，由协作者在最小临时副本完成，不再要求作者写或保留这些演示代码。此安排替代本批最初的作者跨页buffer作业，任务文档已同步；本轮只改文档，未代改功能或构建。
 
 完整任务在docs_from_riscv/tinyos/BATCH07_COPY_TO_USER.md，待作者亲写核心。已完整阅读约定/记忆/B06/路线并核对真实源码和git status，内部子代理只读设计审查。选user_copy_to/tinyos::copy_writable_user，逐页V/R/W/U检查，经query返回的含偏移PA写入；const root仍借用。零长度先成功；非零NULL、溢出、非canonical及跨canonical半区提前拒绝。后页失败允许合法前缀，结果整体不可用；无alloc/map/flush/所有权变更。
 
-GET_TIME=6，a0目标VA，复制局部uint64_t的8字节原始time计数，成功0/失败-1；timer只公开既有读取的窄入口，用户void*包装支持未对齐字节缓冲区。作者先栈采样，sleep后先完成旧buffer模式核对，再复用原buffer在真实页界前3字节做3+5输出/逐字节还原/保护值检查，后值更大；代码页目标拒绝，Time OK及原Hello/Data OK/exit保留。P0由协作者承担少量宿主、真实QEMU及6页回收；P1/P2均选做，不追加庞大矩阵。无独立root/堆/时间换算/rCore第五章。
+GET_TIME=6，a0目标VA，复制局部uint64_t的8字节原始time计数，成功0/失败-1；timer只公开既有读取的窄入口，用户void*包装支持未对齐字节缓冲区。作者按上方收简安排完成普通采样演示，协作者承担少量宿主、真实跨页/权限QEMU及6页回收；P1/P2均选做，不追加庞大矩阵。无独立root/堆/时间换算/rCore第五章。
 
 本轮仅交付任务/索引/路线/简短记忆，未改产品或测试、未运行新构建/QEMU；最近已通过的功能验证仍为下方B06。文档自检与源码/暂存区保持核对见.cache/batch07-task-preparation/。保留全部既有未提交改动，不clean/stage/commit/push或创建worktree。B06功能与理解归档已完整收尾，不再要求重答；此前局部代改授权不扩为B07整批代写。
 
@@ -462,10 +950,10 @@ root getter 最终 QEMU 临时副本探针通过：初始化前和 sched_init �
 - PMM 以内核末尾和 Device Tree 地址推断可用区，不解析 DTB 内存节点，也没有锁。
 - 当前页表依赖恒等映射才能直接解引用物理页表地址。
 - `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；空 L0/L1 可由独立接口回收，当前只有单 hart 本地 TLB flush，没有多 hart shootdown、ASID 或权限修改接口。
-- 调度器演示两个静态 S-mode 任务、一个静态 U-mode 任务和独立 idle task；sleep 草稿已支持 BLOCKED 和按 timer 中断次数唤醒，尚无每任务地址空间或动态任务生命周期。
-- 用户任务仍与内核共享根页表；隔离目前只依赖 PTE 的 U 位。
-- 演示用户代码页和栈页现在由任务 UserMemory 描述管理，exit/选定 fault 路径可回收；prepare_demo_user_memory 失败回滚和 task_create_user 失败的调用者善后均已补齐。仍使用共享 root 和静态内核栈，尚非独立的每任务地址空间。
-- syscall 当前支持字符输出、yield、exit、sleep 和 WRITE；WRITE 使用最多 256 字节的固定内核缓冲区，完整 user_copy_from 成功后才输出，零长度返回 0、错误返回 -1，正常 U-mode 路径已验证。选定的 U-mode fault 会终止当前任务并回收用户页，静态内核栈保留。
+- 调度器仍为四槽静态任务池与独立idle，boot创建两S两U；运行期可SPAWN/FORK并复用安全回收槽，EXEC在同Task替换内置镜像。sleep支持BLOCKED和按timer唤醒，REAP为非阻塞三态；尚无父子权限、阻塞wait、动态内核栈或路径式execve。
+- 私有用户root借用内核模板槽0/2，用户槽1独立；模板及其共享下级表必须持续存活。当前单hart、ASID=0、全局本地刷新，非多hart隔离或通用任意布局管理器。
+- 任务持有完整UserAddressSpace，内部UserMemory管理有界内容页记录；exit先切回内核根再显式释放，默认7页包含1根+4内容+2用户下级表。静态内核栈保留，原loader自身回滚再次失败丢局部归属的历史限制尚未解决。
+- syscall支持字符输出、yield、exit、sleep、WRITE、GET_TIME、REAP、SPAWN、FORK与内置EXEC；WRITE最多256字节固定内核buffer，完整读取成功才输出；GET_TIME写回8字节原始计时器计数。选定U-mode fault复用退出路径，静态内核栈保留；不在用户exit析构内核全局C++对象。
 
 ## 常用命令
 

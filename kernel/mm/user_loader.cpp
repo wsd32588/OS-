@@ -1,8 +1,9 @@
 #include "mm/user_loader.hpp"
 #include "mm/pmm.h"
-#include "user/user_image.h"
+#include "user/user_image.hpp"
 #include "arch/riscv/vm_arch.h"
 #include "mm/address.hpp"
+#include "mm/user_address_space.h"
 
 #include <span>
 
@@ -71,9 +72,7 @@ int load_user_elf(
     }
     
     /* 段字段校验：大小、文件范围、入口。 */
-    if (code_segment->memory_size == 0 ||
-        code_segment->memory_size > SV39_PAGE_SIZE ||
-        data_segment->memory_size == 0 ||
+    if (code_segment->memory_size > SV39_PAGE_SIZE ||
         code_segment->file_size > code_segment->memory_size ||
         data_segment->file_size > data_segment->memory_size ||
         code_segment->file_offset > image.size() ||
@@ -86,7 +85,7 @@ int load_user_elf(
     const uint64_t bytes = data_segment->memory_size;
     const uint64_t count = bytes / SV39_PAGE_SIZE +
         (bytes % SV39_PAGE_SIZE != 0);
-    if (count == 0 || count > USER_MEMORY_MAX_PAGE - 2) {
+    if (count > USER_MEMORY_MAX_PAGE - 2) {
         return SV39_ERR_INVALID_ARGUMENT;
     }
     const size_t data_page_count = static_cast<size_t>(count);
@@ -104,6 +103,17 @@ int load_user_elf(
         !validate_no_overlap(ranges)
     ) {
         return SV39_ERR_INVALID_ARGUMENT;
+    }
+
+    for (const PageRange& range : ranges) {
+        const uintptr_t first = range.start.to_addr().val();
+        const uintptr_t last = range.end.to_addr().val() - 1;
+
+        if (sv39_vpn_index(first, 2) != USER_ADDRESS_SPACE_ROOT_INDEX ||
+            sv39_vpn_index(last, 2) != USER_ADDRESS_SPACE_ROOT_INDEX
+        ) {
+            return SV39_ERR_INVALID_ARGUMENT;
+        }
     }
 
     uintptr_t entry = (uintptr_t)elf_layout.entry_address;

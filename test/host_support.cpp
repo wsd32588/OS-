@@ -8,10 +8,22 @@ tinyos_test::CallCounts g_calls;
 std::vector<tinyos_test::CallEvent> g_events;
 void* g_free_failure_page = nullptr;
 unsigned long g_flush_failure_countdown = 0;
+unsigned long g_allocation_calls = 0;
+uint64_t g_satp = 0;
 }
 
 extern "C" int __real_sv39_unmap_page(Sv39PageTable *root, uint64_t address);
 extern "C" int __real_pmm_free_page(void *page);
+extern "C" void* __real_pmm_alloc_page(void);
+
+extern "C" void* __wrap_pmm_alloc_page(void) {
+    ++g_allocation_calls;
+    return __real_pmm_alloc_page();
+}
+
+extern "C" uint64_t sv39_read_satp(void) {
+    return g_satp;
+}
 
 extern "C" int __wrap_sv39_unmap_page(Sv39PageTable *root, uint64_t address) {
     ++g_calls.unmap;
@@ -47,6 +59,14 @@ extern "C" void uart_puts(const char *text) {
 }
 
 namespace tinyos_test {
+
+unsigned long host_allocation_calls() {
+    return g_allocation_calls;
+}
+
+void host_set_satp(uint64_t value) {
+    g_satp = value;
+}
 
 void host_set_free_failure(void *page) {
     g_free_failure_page = page;

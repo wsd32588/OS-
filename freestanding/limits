@@ -1,6 +1,34 @@
 #pragma once
 #include <limits.h>
 
-namespcae std {
+namespace std {
 
-}
+template <typename T>
+struct numeric_limits {
+    static constexpr bool is_specialized = false;
+};
+
+#define TINYOS_NUMERIC_LIMITS(TYPE, MINIMUM, MAXIMUM) \
+    template <> struct numeric_limits<TYPE> { \
+        static constexpr bool is_specialized = true; \
+        static constexpr TYPE min() noexcept { return MINIMUM; } \
+        static constexpr TYPE max() noexcept { return MAXIMUM; } \
+        static constexpr TYPE lowest() noexcept { return MINIMUM; } \
+    }
+
+TINYOS_NUMERIC_LIMITS(bool, false, true);
+TINYOS_NUMERIC_LIMITS(char, CHAR_MIN, CHAR_MAX);
+TINYOS_NUMERIC_LIMITS(signed char, SCHAR_MIN, SCHAR_MAX);
+TINYOS_NUMERIC_LIMITS(unsigned char, 0, UCHAR_MAX);
+TINYOS_NUMERIC_LIMITS(short, SHRT_MIN, SHRT_MAX);
+TINYOS_NUMERIC_LIMITS(unsigned short, 0, USHRT_MAX);
+TINYOS_NUMERIC_LIMITS(int, INT_MIN, INT_MAX);
+TINYOS_NUMERIC_LIMITS(unsigned int, 0U, UINT_MAX);
+TINYOS_NUMERIC_LIMITS(long, LONG_MIN, LONG_MAX);
+TINYOS_NUMERIC_LIMITS(unsigned long, 0UL, ULONG_MAX);
+TINYOS_NUMERIC_LIMITS(long long, LLONG_MIN, LLONG_MAX);
+TINYOS_NUMERIC_LIMITS(unsigned long long, 0ULL, ULLONG_MAX);
+
+#undef TINYOS_NUMERIC_LIMITS
+
+} // namespace std

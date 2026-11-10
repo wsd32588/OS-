@@ -34,4 +34,33 @@ user_exit:
 1:
     j 1b
 
+.global user_get_time
+user_get_time:
+    li a7, SYSCALL_GET_TIME
+    ecall
+    ret
+
+.global user_reap
+user_reap:
+    li a7, SYSCALL_REAP
+    ecall
+    ret
+
+.global user_spawn
+user_spawn:
+    li a7, SYSCALL_SPAWN
+    ecall
+    ret
+
+.global user_fork
+user_fork:
+    li a7, SYSCALL_FORK
+    ecall
+    ret
+
+.global user_exec
+user_exec:
+    li a7, SYSCALL_EXEC
+    ecall
+    ret
 .section .note.GNU-stack, "", @progbits

@@ -28,6 +28,8 @@ struct CallEvent {
 
 const CallCounts &host_call_counts();
 const std::vector<CallEvent> &host_call_events();
+unsigned long host_allocation_calls();
+void host_set_satp(uint64_t value);
 
 struct PageDescriptor {
     uintptr_t virtual_address = 0;

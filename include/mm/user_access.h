@@ -15,6 +15,13 @@ int user_copy_from(
     uintptr_t source_address, //用户虚地址
     size_t length
 );
+
+int user_copy_to(
+    const Sv39PageTable* root,
+    uintptr_t destinatiom_address,
+    const void* source,
+    size_t length
+);
 #ifdef __cplusplus
 }
 #endif

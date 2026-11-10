@@ -68,21 +68,7 @@ struct trap_frame* trap_handler(struct trap_frame* frame) {
     if (!is_interrupt &&
         (frame->sstatus & SSTATUS_SPP) == 0 &&
         is_user_fault(code)) {
-            uart_puts("\n[user fault]\n");
-            
-            uart_puts("scause = ");
-            uart_put_hex(frame->scause);
-            uart_putchar('\n');
-
-            uart_puts("sepc = ");
-            uart_put_hex(frame->sepc);
-            uart_putchar('\n');
-
-            uart_puts("stval = ");
-            uart_put_hex(frame->stval);
-            uart_putchar('\n');
-
-            return sched_on_exit(frame);
+            return sched_on_user_fault(frame);
         }
 
     uart_puts("\n=== TRAP ===\n");

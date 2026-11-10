@@ -3,8 +3,21 @@
 /* The QEMU verifier scripts inject probe code that calls the UART helpers. */
 #include "drivers/uart.h"
 
-void kernel_main(unsigned long hart_id, const void* device_tree) {
-    UserElfLayout layout = {0};
+class Test {
+    public:
+        Test(char v) : value(v) { count += 1; }
+        char value;
+
+        volatile size_t count = 0;
+};
+Test test('D');
+
+extern "C" void kernel_main(unsigned long hart_id, const void* device_tree) {
+
+    uart_putchar(test.value);
+    uart_put_hex(static_cast<unsigned long>(test.count));
+    uart_putchar('\n');
+    UserElfLayout layout = {};
     size_t elf_size = 0;
 
     boot_console(hart_id, device_tree);
