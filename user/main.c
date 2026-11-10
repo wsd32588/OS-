@@ -16,40 +16,37 @@ static void fail(const char* reason) {
     user_exit(1); /* 显式触发 EXIT 系统调用退出 */
 }
 
-static void reap_requested(int task_id, long expected_status) {
+static long wait_requested(long expected_status) {
     TaskExitResult result = {0};
-    for (;;) {
-        long res = user_reap(task_id, &result);
 
-        if (res == 0) {
+    for (;;) {
+        const long matched_id = user_waitpid(-1, &result);
+
+        if (matched_id == -2) {
             if (user_yield() != 0) {
-                fail("yield while wait for U0 failed\n");
+                fail("yield while waiting failed\n");
             }
             continue;
         }
 
-        if (res != 1) {
-            fail("reap U0 failed\n");
+        if (matched_id < 0) {
+            fail("waitpid failed\n");
         }
 
         if (result.reason != TASK_RESULT_REQUESTED ||
             result.status != expected_status ||
             result.fault_scause != 0) {
-            fail("unexpected U0 exit result\n");
+            fail("unexpected child exit result\n");
         }
-        break;
+
+        return matched_id;
     }
 }
+
 int main(unsigned long user_tag) {
 
     if (counter != 7 || data_message[0] != 'd') {
         fail("U2 initial data mismatch\n");
-    }
-
-    for (size_t i = 0; i < (4096 + 32); ++i) {
-        if (buffer[i] != 0) {
-            return -1;
-        }
     }
 
     unsigned long expected_counter = 100UL + user_tag * 100UL;
@@ -195,8 +192,7 @@ int main(unsigned long user_tag) {
 
 
     if (user_tag == 1) {
-        reap_requested(2, 0);
-
+        (void)wait_requested(0);
         static const char reap_message[] = "[U1] reaped U0\n";
 
         if (user_write(reap_message, sizeof(reap_message) - 1) !=
@@ -216,7 +212,9 @@ int main(unsigned long user_tag) {
         }
 
 
-        reap_requested((int)spawned_id, 23);
+        if (wait_requested(23) != spawned_id) {
+            fail("unexpected spawned child ID\n");
+        }
 
         // U2 修改、释放自己的空间后，U1 的数据仍应保持。
         if (counter != expected_counter || data_message[0] != 'D') {
@@ -270,7 +268,10 @@ int main(unsigned long user_tag) {
             fail("exec returned\n");
         }
 
-        reap_requested(forked_id, 37);
+        if (wait_requested(37) != forked_id) {
+            fail("unexpected fork child ID\n");
+        }
+
         if (counter != expected_counter ||
             fork_local != 1234UL ||
             buffer[0] != 1 ||

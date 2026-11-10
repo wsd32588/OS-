@@ -303,6 +303,7 @@ void boot_start_user(
 
     constexpr size_t user_task_count = 2;
     UserAddressSpace spaces[user_task_count]{};
+    int user_task_ids[user_task_count]{};
     for (size_t i = 0; i < user_task_count; ++i) {
         if (user_address_space_create(kernel_root, &spaces[i]) != SV39_OK) {
             release_pending_user_spaces(spaces, user_task_count);
@@ -333,6 +334,12 @@ void boot_start_user(
             release_pending_user_spaces(spaces, user_task_count);
             boot_fail("User task creation failed.\n");
         }
+
+        user_task_ids[i] = user_task_id;
+    }
+
+    if (sched_configure_user_reaper(user_task_ids[1]) != 0) {
+        boot_fail("User reaper configuration failed.\n");
     }
 }
 

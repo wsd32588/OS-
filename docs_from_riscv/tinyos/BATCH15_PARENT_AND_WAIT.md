@@ -1,9 +1,24 @@
 # BATCH15：父子关系、等待收集与孤儿收养
 
-状态：2026-11-09完整任务交付，待作者实现。目标接口的C11/C++20语法与用户代码预算已在临时副本验证；
-尚未实现或运行新的内核关系/WAITPID，不将准备试验当作功能验收。
+状态：2026-11-11功能与正常主线已接通，DeepSeek首轮私有助手重构已审查应用。
+构建、创建27/收集37个局部断言和QEMU正常主线通过；完整B15的孤儿转交、真实拒绝/重试及页面统计P0仍待协作者收尾，不标记整批完成。
+本地提交前再次make -j4、make test（CTest宿主测试入口）及git diff --check全部通过。
 
 导航：[批次索引](README.md) · [上一批](BATCH14_BUILTIN_EXEC.md) · [总路线图](../TINYOS_EVOLUTION.md)
+
+2026-11-11当前复验：make -j4成功（无需重编），6秒QEMU实际打印`User task creation failed.`，未进入调度。
+configure全体预检、boot创建循环后登记、scheduler_start登记保护已补；仍需修原任务四处接线：
+task_create_user在idle=-1时取tasks[-1]，缺boot/运行期分支、SIE0及运行期收养者验证；
+syscall_waitpid需允许请求-1；WAITPID case需调用syscall_waitpid并写回frame->a0；
+main首轮等待U0被整行注释，应恢复`(void)wait_requested(0);`。
+证据`.cache/batch15-current-20261111/{build,qemu}.log`；尚未执行完整B15验收，不扩展既定要求。
+
+2026-11-11随后局部修正：作者修好WAITPID参数/分发和main首轮等待；协作者按授权抽出
+`supervisor_interrupts_disabled`、`is_boot_task_context`、`user_creation_parent_id`，
+创建与登记复用检查，boot不再访问tasks[-1]，运行期在分配前确认当前父和根收养者。
+原参数/空间检查、分配与发布保持。目标重建无诊断，27个实际助手提取断言通过（仅CSR读取模拟），
+22秒QEMU跑完ID2/4/5/3退出0/23/37/0、fork isolation、U1 end及后续至少两次S timer。
+证据`.cache/batch15-bootstrap-20261111/`；仅主线运行与本次助手验证，不代表完整B15所有P0完成。
 
 ## 目标与本阶段安排
 
@@ -120,6 +135,23 @@ fork已有current_user_task(frame)，把它自己的task_id传给私有task_crea
 
 ## 退出时转交孩子，收集时仅回收记录
 
+2026-11-10后续复查：作者已补reparent_children及普通退出分支的收养者验证/转交，
+g_user_reaper_id已改int。finish_user_task中的B15顺序已具备：当前USER/SIE0→根无孩子保护或普通父转交孩子
+→原退出记录/诊断→task_destroy→reschedule，不需要再清当前parent或重置收养者配置。
+make kernel/task/sched.o通过且无诊断；这是局部静态/编译结论，尚未执行完整关系与停机路径运行验证。
+本函数可暂告一段落；原任务剩余包括task_create_user运行期父身份与发布、登记一次性等预检、限父peek/reap及WAITPID。
+
+以下为此前局部补充的历史记录，旧警告与else误调用已由上述更新替代。
+
+2026-11-10作者请求局部补充孩子查询助手。协作者沿用作者的`_is_have_child(int task_id)`草稿，
+扫描高水位内非UNUSED、USER且Process非空的记录，父公开ID匹配即true，遍历结束false；
+DEAD但未收集的孩子同样计入。收养者退出分支调用该助手，有孩子时打印原因并wfi停机，
+发生在退出结果记录/标DEAD/空间释放之前。没有代写普通父的孤儿转交流程。
+目标sched.o编译通过，当前g_user_reaper_id仍为uint64_t，既有ID比较有一条signed/unsigned警告。
+临时宿主探针直接提取实际助手并使用真实Process实现，9个场景通过：空表/高水位/活孩子/空资源DEAD孩子/
+UNUSED/内核任务/空Process/其他父/后部BLOCKED孩子。证据`.cache/batch15-reaper-guard-20261110/`。
+未实际运行停机路径或完整B15验收；普通退出else仍误调用boot登记函数，应由作者接着实现孩子转交。
+
 增加私有表扫描助手即可，仍放sched.cpp；不需要链表或为每个Process再放管理器。
 
 在finish_user_task的既有exit/fault公共路径中：
@@ -135,6 +167,21 @@ fork已有current_user_task(frame)，把它自己的task_id传给私有task_crea
 收养者结束后g_user_reaper_id保留原ID，不重新开启bootstrap，也不允许再次登记；安全sched_init才重置。
 
 ## peek与reap：只查看当前父的孩子
+
+2026-11-10作者明确将集中复查第4项交给协作者实现。本次已补：
+私有current_user_task_metadata统一当前槽/状态/USER/Process/私有root检查，
+带frame版本在此基础上检查SPP；收集入口current_user_task_for_collection再读实时sstatus确认SIE0，
+不伪造frame，也不改变公开peek/reap签名。
+peek支持具体ID与-1任意，按槽顺序扫描直属孩子，跳过活孩子继续寻找DEAD；
+只有合法REQUESTED/FAULT且资源已空才同时写info/实际ID，其余返回保持输出。
+reap重新检查当前父、SIE0及直接父关系，继续沿reset→清元数据→UNUSED提交，不分配/释放物理页。
+本次未接手其余boot/创建/WAITPID实现；目标sched.o已编译通过，无诊断。
+独立宿主程序直接提取当前实际函数并链接真实Process.cpp，仅将实时CSR读取替换成可控sstatus，
+37个短断言全通过：任意查询跳过活孩子/按最小槽选择、父权限、双输出保持、有效退出原因、
+资源未空拒绝、peek后变更父关系时reap拒绝、成功reset及重复收集等；无PMM调用，
+高水位/下一ID/静态栈与父对象保持。证据`.cache/batch15-collection-20261110/results.json`，
+目标构建日志`.cache/batch15-sched-review-20261110/collection-build.log`。
+这是局部语义验证，不代表真实CSR/trap运行或完整B15/WAITPID已验收。
 
 调整现有C接口为：
 
@@ -223,7 +270,36 @@ tag2/tag3选择各自字符串和长度，共用write检查、yield检查和最�
 删重复BSS后0xf82=3970；再合并fresh-worker后0xefa=3834，RW memsz始终0x1038。
 最终原型只是预算参考，不要求逐行照抄或增加write helper；不能删功能检查、扩代码页或改全局优化等级来绕预算。
 
+2026-11-10作者接入等待助手后，实际链接map中RX为4098字节，超一页2字节。
+在`.cache/batch15-user-size-20261110/`仅删除main开头重复BSS检查的副本，沿用原-O0/链接脚本与包装，
+RX降至4034字节并成功链接；后面的完整零值检查及填充循环保持。正式源码未代改，未运行QEMU。
+副本编译还报告first_child未使用；若无后续用途，首轮等待直接写`(void)wait_requested(0);`即可。
+
 ## 实施顺序与验证分工
+
+### 2026-11-10集中复查（历史问题，以下接线项现已修正）
+
+作者请求检查sched.cpp，两个协作者独立只读审查并核对实际源码，集中发现以下问题；
+不是新增验收条件。本轮不代改核心，不执行已知无法启动的QEMU，也不把旧kernel.elf当本版验证。
+
+1. task_create_user无条件拒绝current_task<0，boot尚为idle(-1)，首次用户创建必失败。
+   原任务的未登记bootstrap/已登记runtime两分支尚未分开；bootstrap核对SIE0/idle/无RUNNING后父=-1，
+   runtime验证当前USER与存活收养者再取父ID，原失败不分配/转移的语义保持。
+2. boot把sched_configure_user_reaper(user_task_ids[1])写在创建循环内；第一次第二项还为0，目标变成内核task0。
+   保存ID仍在循环内，登记调用必须移到两个用户全部创建成功之后。
+3. peek写成matched_id_out!=nullptr时拒绝，判断反了，应为==nullptr；输出ID赋值本身已正确。
+   requested_id=-1仍交给具体ID查找，故没有wait-any；需扫描当前父的直接孩子，活者不能阻止后面DEAD匹配，
+   成功返回实际ID，非1保持两个输出，并只接受有效REQUESTED/FAULT结果。
+4. peek/reap都缺合法当前USER与目标parent==当前公开ID的验证；只有非自身检查不能限制收集权限。
+5. configure缺未配置/currentidle检查及全体USER非空Process、parent=-1预检；不能在提交循环边写边发现错误，
+   要保持非法/重复登记零修改。scheduler_start还缺“有USER必须已登记”的启动检查。
+6. MAX_TASKS仍4，未按本批约定增至5；孤儿三层用户关系连同两S共需5槽。
+7. include/task/sched.h/实现已将peek改3参，syscall_reap仍2参，make报too few arguments。
+   后续新旧收集共用copy后消费流程，必须传局部matched_id并在成功后消费实际匹配ID。
+
+finish_user_task、reparent_children与fork父ID传递的当前方向可保留，本轮不追加其中的设置。
+建议修正顺序：创建/boot登记 → 登记预检和五槽/启动检查 → peek/reap → syscall/WAITPID接线。
+证据`.cache/batch15-sched-review-20261110/build.log`及review-results.json；未改产品/未提交推送。
 
 1. 写Process的parent访问、默认值和reset语义；这是本批起点。
 2. 改五槽、boot登记与创建/发布关系，boot按实际返回ID登记U1。
@@ -269,3 +345,40 @@ timeout 25s make qemu
 `user-budget/results.json`及各版本源码/构建/布局日志：WAITPID用户原型三种预算均可链接，一页断言保留。
 70项正式源码配置哈希保持；本轮仅交付文档与临时准备试验，内核关系、WAITPID与新收养行为尚未实现或运行。
 两个内部协作者分别审查关系/事务边界和用户预算；没有代写正式核心或把原型运行等同于新功能通过。
+
+## DeepSeek网页版局部拆解交接提示词（2026-11-11）
+
+首轮转交补丁已审查并应用：创建/退出共用find_valid_user_reaper_slot，
+collection/fork/exec/finish复用supervisor_interrupts_disabled；各入口返回/停机处理及原事务顺序不变。
+目标重编链接无诊断，创建27/收集37个实际函数提取断言通过（CSR读模拟、链接真实Process），
+25秒QEMU主线退出ID2/4/5/3状态0/23/37/0、fork隔离、U1 end及后续S timer通过。
+证据`.cache/batch15-deepseek-refactor-20261111/results.json`；未扩展跨文件拆分，未提交推送。
+
+将以下提示词及当前sched.cpp、sched.h、Process头/实现、CODE_STYLE.md一起交给DeepSeek；
+网页版没有本地工具时只输出建议补丁，不声称执行了构建或测试。仓库规则以作者明确授权的本轮范围为准。
+
+```text
+你参与一个RV64、单hart、freestanding C++20教学内核TinyOS的局部重构。
+请先阅读我附上的当前源码和规范，以实际代码为准。本轮只负责sched.cpp内部的小范围职责拆解，
+输出可审查的统一diff，由Codex检查并在本地应用。不要直接重写整个调度器。
+
+当前已有三个助手：supervisor_interrupts_disabled、is_boot_task_context、user_creation_parent_id。
+本次目标：检查这些职责划分，并将确实重复的SIE读取、当前用户元数据检查、合法收养者查询
+整理为少量私有助手。保留调用点不同的错误处理（返回错误、返回frame、诊断停机）。
+只有前置条件完全相同的检查才合并，不能把原先没有的验证悄悄扩到其他入口。
+当前boot/SPAWN/FORK/EXEC/等待主线已在QEMU通过；行为保持是本轮约束。
+
+必须保持：
+1. current_task为槽索引，task_id为公开ID，task_count为高水位；idle=-1不能作数组下标。
+2. boot创建与运行期创建分开，SIE关闭；关系和资源预检先于allocate，失败不消耗ID或转移空间。
+3. Process仅拥有自身地址空间、退出记录和父ID；adopt/release不改变父ID，reset才清关系。
+4. fork父/子a0、新frame/栈、sepc规则保持；exec保留Task身份及父关系。
+5. peek只读，wait-any跳过活孩子，错误/待定不改输出；reap再次核对当前父。
+6. 先复制用户结果再消费；切根/释放/接管顺序与提交后停机规则不改。
+7. 固定收养者、退出时转交活和DEAD孩子的策略不改。
+8. 不引入堆、链表、异常、RTTI、动态任务池；不改变ABI、用户镜像布局或优化等级。
+
+完整TaskTable/用户任务操作跨文件拆分已约定等本阶段完成后再做，本轮不要提前实施。
+请先用几句话说明准备合并的职责，再给最小diff、行为保持理由、需验证的现有场景。
+无法运行构建/测试时明确说明；若发现其他bug，另列出来，不混进重构补丁。
+```

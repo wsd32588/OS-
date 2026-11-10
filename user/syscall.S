@@ -63,4 +63,11 @@ user_exec:
     li a7, SYSCALL_EXEC
     ecall
     ret
+
+.global user_waitpid
+user_waitpid:
+    li a7, SYSCALL_WAITPID
+    ecall
+    ret
+
 .section .note.GNU-stack, "", @progbits

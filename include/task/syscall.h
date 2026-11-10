@@ -11,6 +11,7 @@
 #define SYSCALL_SPAWN       8
 #define SYSCALL_FORK        9
 #define SYSCALL_EXEC        10
+#define SYSCALL_WAITPID     11
 #define SYSCALL_WRITE_MAX   256
 
 

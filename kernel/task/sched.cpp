@@ -9,7 +9,7 @@
 #include "process/process.hpp"
 #include "process/spawn.hpp"
 
-#define MAX_TASKS 4
+#define MAX_TASKS 5
 
 #define SSTATUS_SPIE (1UL << 5)
 #define SSTATUS_SPP (1UL << 8)
@@ -18,7 +18,7 @@
 
 static const Sv39PageTable* g_kernel_root;
 static uint64_t g_next_task_id;
-static uint64_t g_user_reaper_id = -1;
+static int g_user_reaper_id = tinyos::kNoParentId;
 enum task_state {
     TASK_UNUSED,
     TASK_READY,
@@ -49,6 +49,10 @@ static tinyos::Process g_process[MAX_TASKS];
 static int task_count;
 static int current_task;
 static struct task idle_task;
+
+static int find_task_slot_by_id(int task_id);
+static struct task* current_user_task_metadata(void);
+static int find_valid_user_reaper_slot(void);
 
 extern "C" void task_enter(
     struct trap_frame* frame
@@ -277,6 +281,54 @@ int task_create(void (*entry)(void)) {
     return task_id;
 }
 
+static bool supervisor_interrupts_disabled(void) {
+    unsigned long sstatus_value{};
+    asm volatile(
+        "csrr %0, sstatus"
+        : "=r"(sstatus_value)
+        :
+        : "memory"
+    );
+    return (sstatus_value & (1UL << 1)) == 0;
+}
+
+static bool is_boot_task_context(void) {
+    if (!supervisor_interrupts_disabled() ||
+        current_task != IDLE_TASK_ID ||
+        task_count < 0 || task_count > MAX_TASKS) {
+        return false;
+    }
+
+    for (int i = 0; i < task_count; ++i) {
+        if (tasks[i].state == TASK_RUNNING) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int user_creation_parent_id(int& parent_id_out) {
+    if (g_user_reaper_id == tinyos::kNoParentId) {
+        if (!is_boot_task_context()) {
+            return -1;
+        }
+        parent_id_out = tinyos::kNoParentId;
+        return 0;
+    }
+
+    if (!supervisor_interrupts_disabled()) {
+        return -1;
+    }
+
+    const struct task* parent = current_user_task_metadata();
+    if (parent == nullptr || find_valid_user_reaper_slot() < 0) {
+        return -1;
+    }
+
+    parent_id_out = parent->task_id;
+    return 0;
+}
+
 int task_create_user(
     uintptr_t entry,
     uintptr_t user_stack_top,
@@ -295,6 +347,11 @@ int task_create_user(
         space->kernel_root != g_kernel_root ||
         space->user_memory.root != space->root
     ) {
+        return -1;
+    }
+
+    int parent_id = tinyos::kNoParentId;
+    if (user_creation_parent_id(parent_id) != 0) {
         return -1;
     }
 
@@ -335,6 +392,7 @@ int task_create_user(
     task->proc = &g_process[slot_index];
     task->proc->adopt(*space);
     task->kind = TASK_KIND_USER;
+    task->proc->set_parent_id(parent_id);
     *space = {};
     return task_id;
 }
@@ -417,44 +475,115 @@ static int find_task_slot_by_id(int task_id) {
     return -1;
 }
 
-int task_peek_exit(int task_id, TaskExitInfo *result_out) {
-    if (result_out == nullptr) {
+// 只读任务表；调用方保持 SIE 关闭，并沿用各自的错误处理。
+static int find_valid_user_reaper_slot(void) {
+    const int slot_index = find_task_slot_by_id(g_user_reaper_id);
+    if (slot_index < 0) {
         return -1;
     }
 
-    int target = find_task_slot_by_id(task_id);
-    if (target == -1 ||
-        target == current_task) {
+    const struct task& reaper = tasks[slot_index];
+    if (reaper.kind != TASK_KIND_USER ||
+        reaper.state == TASK_DEAD ||
+        reaper.proc == nullptr ||
+        reaper.proc->root() == nullptr ||
+        reaper.proc->parent_id() != tinyos::kNoParentId) {
         return -1;
     }
 
-    task* task = &tasks[target];
-    if (task->kind == TASK_KIND_KERNEL ||
-        task->proc == nullptr) {
-            return -1;
+    return slot_index;
+}
+
+static struct task* current_user_task_metadata(void) {
+    if (task_count <= 0 || task_count > MAX_TASKS ||
+        current_task < 0 || current_task >= task_count) {
+        return nullptr;
     }
 
-    if (task->state == TASK_DEAD) {
-        const TaskExitInfo& info = task->proc->exit_info();
-        if (!task->proc->resources_empty() ||
-            info.reason == TASK_EXIT_NONE) {
+    struct task* current = &tasks[current_task];
+    if (current->state != TASK_RUNNING ||
+        current->kind != TASK_KIND_USER ||
+        current->task_id < 0 ||
+        current->proc == nullptr ||
+        current->proc->root() == nullptr) {
+        return nullptr;
+    }
+
+    return current;
+}
+
+static struct task* current_user_task_for_collection(void) {
+    struct task* current = current_user_task_metadata();
+    if (current == nullptr) {
+        return nullptr;
+    }
+
+    if (!supervisor_interrupts_disabled()) {
+        return nullptr;
+    }
+
+    return current;
+}
+
+int task_peek_exit(
+    int requested_id,
+    TaskExitInfo* result_out,
+    int* matched_id_out
+) {
+    if (requested_id < -1 ||
+        result_out == nullptr || matched_id_out == nullptr) {
+        return -1;
+    }
+
+    const struct task* parent = current_user_task_for_collection();
+    if (parent == nullptr) {
+        return -1;
+    }
+
+    bool has_matching_child = false;
+    for (int i = 0; i < task_count; ++i) {
+        const struct task& child = tasks[i];
+        if (i == current_task ||
+            child.state == TASK_UNUSED ||
+            child.kind != TASK_KIND_USER ||
+            child.proc == nullptr ||
+            child.proc->parent_id() != parent->task_id ||
+            (requested_id >= 0 && child.task_id != requested_id)) {
+            continue;
+        }
+
+        has_matching_child = true;
+        // A later child may already be DEAD even when this one is still alive.
+        if (child.state != TASK_DEAD) {
+            continue;
+        }
+
+        const TaskExitInfo& info = child.proc->exit_info();
+        if (!child.proc->resources_empty() ||
+            (info.reason != TASK_EXIT_REQUESTED && info.reason != TASK_EXIT_FAULT)) {
             return -1;
         }
+
+        *matched_id_out = child.task_id;
         *result_out = info;
         return 1;
     }
 
-    if (task->state != TASK_UNUSED) {
-        return 0;
-    }
-
-    return 1;
+    return has_matching_child ? 0 : -1;
 }
 
 
 int task_reap(int task_id) {
-    int target = find_task_slot_by_id(task_id);
+    if (task_id < 0) {
+        return -1;
+    }
 
+    const struct task* parent = current_user_task_for_collection();
+    if (parent == nullptr) {
+        return -1;
+    }
+
+    const int target = find_task_slot_by_id(task_id);
     if (target < 0 ||
         target == current_task) {
         return -1;
@@ -463,6 +592,7 @@ int task_reap(int task_id) {
 
     if (target_task->kind != TASK_KIND_USER ||
         target_task->proc == nullptr ||
+        target_task->proc->parent_id() != parent->task_id ||
         target_task->state != TASK_DEAD) {
         return -1;
     }
@@ -509,27 +639,17 @@ struct trap_frame* sched_on_yield(
 
 static struct task* current_user_task(struct trap_frame* frame) {
     if (frame == nullptr ||
-        task_count <= 0 || task_count > MAX_TASKS ||
-        current_task < 0 ||
-        current_task >= task_count) {
-        return nullptr;
-    }
-
-    struct task* task = &tasks[current_task];
-    if (task->state != TASK_RUNNING ||
-        task->kind != TASK_KIND_USER ||
-        task->proc == nullptr ||
-        task->proc->root() == nullptr ||
         (frame->sstatus & SSTATUS_SPP) != 0) {
         return nullptr;
     }
 
-    return task;
+    return current_user_task_metadata();
 }
 
 static int task_create_user_from_frame(
     const trap_frame& snapshot,
-    UserAddressSpace& candidate
+    UserAddressSpace& candidate,
+    int parent_id
 ) {
     task* child = nullptr;
     const int task_id = task_allocate(&child);
@@ -544,6 +664,7 @@ static int task_create_user_from_frame(
     child->proc = &g_process[slot_index];
     child->proc->adopt(candidate);
     child->kind = TASK_KIND_USER;
+    child->proc->set_parent_id(parent_id);
 
     return task_id;
 }
@@ -565,19 +686,9 @@ int sched_fork_current(struct trap_frame* frame) {
         return -1;
     }
 
-    unsigned long status = 0;
-    asm volatile(
-        "csrr %0, sstatus"
-        : "=r"(status)
-        :
-        : "memory"
-    );
-
-    
-    if ((status & (1UL << 1)) != 0) {
+    if (!supervisor_interrupts_disabled()) {
         return -1;
     }
-
 
     const VirtAddr pc(frame->sepc);
     const VirtAddr sp(frame->sp);
@@ -622,7 +733,7 @@ int sched_fork_current(struct trap_frame* frame) {
 
     asm volatile("fence.i" ::: "memory");
 
-    int new_id = task_create_user_from_frame(snapshot, candidate);
+    int new_id = task_create_user_from_frame(snapshot, candidate, parent->task_id);
 
     if (new_id < 0) {
         return discard_fork_candidate(candidate);
@@ -646,16 +757,7 @@ int sched_exec_current(
         return -1;
     }
 
-    unsigned long status = 0;
-    asm volatile(
-        "csrr %0, sstatus"
-        : "=r"(status)
-        :
-        : "memory"
-    );
-
-    
-    if ((status & (1UL << 1)) != 0) {
+    if (!supervisor_interrupts_disabled()) {
         return -1;
     }
 
@@ -750,6 +852,59 @@ int sched_exec_current(
 
 int sched_configure_user_reaper(int task_id) {
 
+    if (g_user_reaper_id != tinyos::kNoParentId ||
+        !is_boot_task_context()) {
+        return -1;
+    }
+
+    for (int i = 0; i < task_count; ++i) {
+        const struct task& target = tasks[i];
+        if (target.state == TASK_UNUSED ||
+            target.kind != TASK_KIND_USER) {
+            continue;
+        }
+
+        if (target.proc == nullptr ||
+            target.proc->parent_id() != tinyos::kNoParentId) {
+            return -1;
+        }
+    }
+
+    const int slot_index = find_task_slot_by_id(task_id);
+    if (slot_index < 0) {
+        return -1;
+    }
+
+    struct task* reaper = &tasks[slot_index];
+
+    if (reaper->kind != TASK_KIND_USER ||
+        reaper->proc == nullptr ||
+        reaper->proc->root() == nullptr) {
+        return -1;
+    }
+
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (tasks[i].state != TASK_UNUSED &&
+            tasks[i].state != TASK_READY) {
+            return -1;
+        }
+    }
+    for (int i = 0; i < task_count; ++i) {
+        struct task& target = tasks[i];
+
+        if (target.state == TASK_UNUSED ||
+            target.kind != TASK_KIND_USER) {
+                continue;
+        }
+
+        target.proc->set_parent_id(
+            target.task_id == task_id
+            ? tinyos::kNoParentId
+            : task_id);
+    }
+
+    g_user_reaper_id = task_id;
+    return 0;
 }
 
 /* Only used for the validated current user task; result and static stack survive. */
@@ -774,6 +929,42 @@ static void task_destroy(struct task* task) {
 
 }
 
+static bool _is_have_child(int task_id) {
+    //前置检查不由此处承担
+    for (int i = 0; i < task_count; ++i) {
+        const struct task& candidate = tasks[i];
+        if (candidate.state == TASK_UNUSED ||
+            candidate.kind != TASK_KIND_USER ||
+            candidate.proc == nullptr) {
+            continue;
+        }
+
+        // DEAD children still belong to their parent until they are collected.
+        if (candidate.proc->parent_id() == task_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// 前提：调用方已验证新父合法，并保持 SIE 关闭。
+static void reparent_children(int old_parent_id, int new_parent_id) {
+    for (int i = 0; i < task_count; ++i) {
+        struct task& child = tasks[i];
+
+        if (child.state == TASK_UNUSED ||
+            child.kind != TASK_KIND_USER ||
+            child.proc == nullptr) {
+            continue;
+        }
+
+        if (child.proc->parent_id() == old_parent_id) {
+            child.proc->set_parent_id(new_parent_id);
+        }
+    }
+}
+
 static struct trap_frame* finish_user_task(
     struct trap_frame* frame,
     TaskExitReason reason,
@@ -782,6 +973,33 @@ static struct trap_frame* finish_user_task(
     struct task* task = current_user_task(frame);
     if (task == nullptr) {
         return frame;
+    }
+
+    if (!supervisor_interrupts_disabled()) {
+        return frame;
+    }
+
+    const bool is_reaper =
+        task->task_id == (int)g_user_reaper_id;
+
+    if (is_reaper) {
+        if (_is_have_child(task->task_id)) {
+            uart_puts("[task] reaper cannot exit while children remain\n");
+            for (;;) {
+                asm volatile("wfi");
+            }
+        }
+    } else {
+        const int slot_index = find_valid_user_reaper_slot();
+
+        if (slot_index < 0) {
+            uart_puts("[task] invalid user reaper\n");
+            for (;;) {
+                asm volatile("wfi");
+            }
+        }
+
+        reparent_children(task->task_id, tasks[slot_index].task_id);
     }
 
     task->proc->record_exit(TaskExitInfo{
@@ -874,6 +1092,15 @@ const Sv39PageTable* sched_current_user_root(void) {
 int scheduler_start(void) {
     if (task_count == 0) {
         return -1;
+    }
+
+    if (g_user_reaper_id == tinyos::kNoParentId) {
+        for (int i = 0; i < task_count; ++i) {
+            if (tasks[i].state != TASK_UNUSED &&
+                tasks[i].kind == TASK_KIND_USER) {
+                return -1;
+            }
+        }
     }
 
     int first = -1;

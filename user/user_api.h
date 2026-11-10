@@ -17,6 +17,7 @@ long user_reap(int task_id, TaskExitResult* result);
 long user_spawn(uintptr_t user_argument);
 long user_fork(void);
 long user_exec(uintptr_t user_argument);
+long user_waitpid(long requested_id, TaskExitResult* result);
 
 #ifdef __cplusplus
 [[noreturn]] void user_exit(long status);

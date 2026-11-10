@@ -64,18 +64,22 @@ static long syscall_get_time(
     return 0;
 }
 
-static long syscall_reap(
+static long syscall_waitpid(
     long requested_id,
     uintptr_t result_address) {
-    if (requested_id < 0 ||
+    if (requested_id < -1 ||
         requested_id > __INT_MAX__) {
             return -1;
         }
     const int task_id = (int)requested_id;
     
     TaskExitInfo info = {0};
-    int res = task_peek_exit(task_id, &info);
+    int match_id = -1;
+    int res = task_peek_exit(task_id, &info, &match_id);
 
+    if (res == 0) {
+        return -2;
+    }
     if (res != 1) {
         return res;
     }
@@ -106,14 +110,34 @@ static long syscall_reap(
             return -1;
         }
     
-    if (task_reap(task_id) != 0) {
+    if (task_reap(match_id) != 0) {
         uart_puts("[reap] commit failed\n");
         for (;;) {
             asm volatile("wfi");
         }
     }
 
-    return 1;
+    return match_id;
+}
+
+static long syscall_reap(
+    long requested_id,
+    uintptr_t result_address
+) {
+    if (requested_id < 0) {
+        return -1;
+    }
+
+    const long result =
+        syscall_waitpid(requested_id, result_address);
+
+    if (result >= 0) {
+        return 1;
+    }
+    if (result == -2) {
+        return 0;
+    }
+    return -1;
 }
 
 struct trap_frame* syscall_handle(
@@ -186,6 +210,13 @@ struct trap_frame* syscall_handle(
         if (sched_exec_current(frame, user_argument) != 0) {
             frame->a0 = (uint64_t)(long)-1;
         }
+        break;
+    }
+    case SYSCALL_WAITPID: {
+        const long requested_id = (long)frame->a0;
+        const uintptr_t result_address = (uintptr_t)frame->a1;
+        frame->a0 = (uint64_t)syscall_waitpid(
+            requested_id, result_address);
         break;
     }
     default:

@@ -17,7 +17,11 @@ int sched_init(const Sv39PageTable* kernel_root);
 int task_create(void (*entry)(void));
 
 int scheduler_start(void);
-int task_peek_exit(int task_id, TaskExitInfo* result_out);
+int task_peek_exit(
+    int requested_id,
+    TaskExitInfo* result_out,
+    int* matched_id_out
+);
 int task_reap(int task_id);
 
 void task_exit(void);

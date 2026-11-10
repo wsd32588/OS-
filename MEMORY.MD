@@ -1,6 +1,47 @@
 # TinyOS 项目记忆
 
-最后更新：2026-11-10
+最后更新：2026-11-11
+
+## 用户要求本地提交当前B15进展；下一步为既定验收收尾（2026-11-11）
+
+本次提交范围为当前父子关系/收养者/限父WAITPID及助手重构的10个已跟踪文件；不推送。正常主线与64局部断言已过，B15尚有既定P0：实际非父拒绝/坏地址保留后重试、五槽活/DEAD孤儿转交、关系与PMM35free/21新alloc/净14统计。下一步由协作者补这些验收，不交给作者写新框架；随后梳理完整路径并用原三题收尾，再推进不同内置ELF选择/EXEC。TaskTable跨文件拆分仍在该阶段完成后，不能把首轮助手重构当作已完成整体拆分。
+提交前make -j4、make test（CTest宿主入口）及git diff --check全部通过；仅清除一处尾空格和已替代的first_child注释，无功能修改。
+
+## DeepSeek首轮sched局部重构补丁已审查应用（2026-11-11）
+
+作者转交DeepSeek统一diff，协作者核对当前源码后应用：find_valid_user_reaper_slot统一创建/退出两处只读收养者检查；collection/fork/exec/finish统一调用supervisor_interrupts_disabled，原各入口错误处理及资源顺序保持。只有私有助手和调用点改变，无公开ABI或策略变更。make -j4重编链接无诊断；实际函数提取、真实Process.cpp、仅CSR读模拟的创建27/收集37断言均通过；25秒QEMU主线ID2/4/5/3退出0/23/37/0、隔离/end与最终至少两次S timer通过。证据.cache/batch15-deepseek-refactor-20261111/results.json。原有configure空行仍有一处尾空格，未全仓格式化；未提交推送、不代表完整B15其余P0已验收。
+
+## B15局部检查抽取与DeepSeek交接（2026-11-11）
+
+作者授权抽出idle/SIE0/无RUNNING预检，并计划让DeepSeek网页版负责sched局部拆解，要求先提供提示词、通信入口以后再构建。协作者在sched.cpp增加supervisor_interrupts_disabled/is_boot_task_context/user_creation_parent_id私有助手，创建分boot无父与运行期当前USER+存活根收养者核验，所有失败先于allocate；configure复用boot上下文，保留全READY及关系事务预检。make -j4重建链接无诊断，直接提取新助手/真实Process.cpp、仅CSR读模拟的27断言通过；22秒QEMU观察ID2/4/5/3正常退出0/23/37/0、U1隔离/end及退出后至少两次S timer。证据.cache/batch15-bootstrap-20261111/；这不是完整B15孤儿/权限/复制失败P0验收。作者同时修好WAITPID范围/分发及main首轮调用，未代改这些文件。
+
+已只读阅读用户提供的/mnt/c/Users/asus/Downloads/agent_exchange.py：stdlib/fcntl固定87字节状态、文档哈希、D/d/C/c/X、最多5轮、run执行传入命令且只处理一次当前角色回合；无网络或DeepSeek网页连接能力，不会自动在两网页间传内容。未执行/复制/接入，保持等待用户进一步说明；提示词入口见BATCH15末尾，当前委派不提前实施整阶段后的TaskTable/跨文件重组。
+
+## B15接线复验仍未通过（2026-11-11）
+
+用户修用户镜像预算后回复ok，协作者复验make -j4成功（无需重编），6s QEMU实际停在User task creation failed，未进入用户调度。当前task_create_user允许current=-1后仍取tasks[current_task]，缺boot无父与运行期当前USER两个分支、SIE0及运行期reaper存活验证；syscall_waitpid范围仍<0拒绝-1；WAITPID case误调syscall_reap且丢弃返回值未写frame->a0；main首轮wait_requested(0)被整体注释，需恢复调用而非只去掉未使用变量。configure全体预检、boot循环后登记、scheduler_start未配置拒绝现已补齐。证据.cache/batch15-current-20261111/{build,qemu}.log；不代改作者核心，不声称完整B15通过。
+
+## B15用户镜像预算局部诊断（2026-11-10）
+
+作者接入wait_requested及三次wait-any后报告一页链接断言失败。实际map RX4098字节，仅超2字节；临时副本仅删main开头旧重复BSS零检查，保留后面完整零值检查并填充循环，原-O0/原链接脚本下RX4034字节、链接成功。证据.cache/batch15-user-size-20261110/{baseline,deduplicated}.map；未代改正式源码/放宽断言或运行QEMU。first_child局部变量未使用产生警告，无后续用途时可直接(void)wait_requested(0)。
+
+## B15第4项局部实现：限父peek/reap与wait-any已补（2026-11-10）
+
+作者明确授权协作者直接完成集中复查第4项。sched.cpp新增私有当前USER元数据助手，带frame入口继续检查SPP，收集入口另读实时sstatus确认SIE0；公开接口不变。peek按直接parent公开ID筛选，支持具体ID/-1任意，跳过活孩子寻找最小槽DEAD，合法REQUESTED/FAULT且空间为空才同时写info/实际ID；pending/error不写输出。reap再次校验父权限与有效退出记录，reset后清元数据、最后UNUSED，零PMM，不改变高水位/下一ID。
+
+目标make kernel/task/sched.o通过无诊断；独立宿主程序直接提取当前函数并链接真实Process.cpp，仅CSR读替换可控值，37个短断言全过，含父权限、任意查询、输出保持、资源忙拒绝、二次核权/重复收集与状态保持。证据.cache/batch15-collection-20261110/results.json及.cache/batch15-sched-review-20261110/collection-build.log。未跑QEMU或完整B15接线；作者其余boot/创建/WAITPID继续中，MAX_TASKS现为5、原matched输出判空已修，不重复当作待修。未提交推送。
+
+## B15 sched集中复查初次结果（历史，第4项及容量已修；其余仍需接线，2026-11-10）
+
+作者请求完整检查sched.cpp。独立只读审查与主线程一致：create无条件current<0拒绝boot；boot登记调用误在创建for内，首轮第二ID仍0；peek matched_id_out!=nullptr判空反了，未支持-1任意也未限父，reap同样未限父；configure缺一次性/idle/全体USER parent=-1及Process预检，start缺USER已配置检查；MAX_TASKS仍4应按本批5。finish/reparent/fork父ID方向可保留，不再加设置。整仓make实际因syscall_reap以2参调用3参peek失败，未跑旧kernel的QEMU/完整P0，不代改核心。证据.cache/batch15-sched-review-20261110/{build.log,review-results.json}与BATCH15集中修正节；按创建boot→登记/容量/启动→收集→syscall顺序让作者修改，不新增测试矩阵。
+
+## B15 finish_user_task局部实现已具备，转向创建与收集（2026-11-10）
+
+作者已写reparent_children与普通退出时收养者合法性验证/转交，reaperID改int；当前finish顺序符合本批设计，后续不再追加父字段清理或收养者重置。make kernel/task/sched.o通过无诊断；未跑完整B15。task_create_user仍未解析/写入运行期父ID，configure仍缺一次性/idle及全体parent预检，后续还有限父peek/reap与WAITPID11；这些均为已交付原任务，不新增条件。B15文档已标注实现中与旧局部结论被替代。
+
+## B15局部授权：孩子查询及收养者退出停机已补（2026-11-10）
+
+作者明确要求辅助函数扫描父为当前Task的记录、有孩子则停机。协作者沿用作者新建_is_have_child(int)草稿，按task_count扫描USER/非UNUSED/非空Process，parent公开ID匹配true，包含DEAD，结束false；finish_user_task仅收养者分支调用，命中打印并wfi，先于退出记录/释放。sched.o编译通过（当前uint64_t reaperID和int TaskID仍有一条符号比较警告）；临时宿主测试直接提取该助手并链接真实Process，9场景通过，证据.cache/batch15-reaper-guard-20261110/。未运行真实停机路径或整个B15；普通else仍误调用sched_configure_user_reaper(parent_id)，后续应由作者实现孤儿转交，不能重新做boot登记。保留作者其它进行中改动，未提交推送。
 
 ## 用户授权迁移前Git检查点与快照（2026-11-10）
 
