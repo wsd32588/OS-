@@ -16,3 +16,11 @@ user_image_end:
 user_elf_start:
     .incbin "user/build/demo.elf"
 user_elf_end:
+
+.balign 8
+.global user_worker_elf_start
+.global user_worker_elf_end
+
+user_worker_elf_start:
+    .incbin "user/build/worker.elf"
+user_worker_elf_end:

@@ -5,6 +5,7 @@
 
 #include "task/task_exit_info.h"
 
+
 typedef struct Sv39PageTable Sv39PageTable;
 typedef struct UserAddressSpace UserAddressSpace;
 
@@ -38,7 +39,7 @@ struct trap_frame* sched_on_sleep(struct trap_frame* frame, unsigned long ticks)
 
 int sched_fork_current(struct trap_frame* frame);
 
-int sched_exec_current(struct trap_frame* frame, uintptr_t user_argument);
+int sched_exec_current(struct trap_frame* frame, uint64_t program_id, uintptr_t user_argument);
 
 int sched_configure_user_reaper(int task_id);
 

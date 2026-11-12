@@ -22,6 +22,9 @@ add_library(tinyos_test_kernel STATIC
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_address_space.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_access.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/user/user_image.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/process/process.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/task/task.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/task/task_table.cpp"
 )
 set_target_properties(tinyos_test_kernel PROPERTIES
     C_STANDARD 11

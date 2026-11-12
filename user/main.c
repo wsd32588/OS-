@@ -1,6 +1,7 @@
 
 #include "user_api.h"
 #include <stdint.h>
+#include "task/builtin_program.h"
 
 static volatile unsigned long counter = 7;
 static volatile unsigned char buffer[4096 + 32];
@@ -60,35 +61,15 @@ int main(unsigned long user_tag) {
         buffer[i] = (unsigned char)(i + 1);
     }
 
-    if (user_tag == 2 ||
-        user_tag == 3) {
-
-        char message[] = "[exec] fresh image OK\n";
-        if (user_tag == 2) {
-            char message[] = "[U2] fresh image OK\n";
-
-            if (user_write(message, sizeof(message) - 1) !=
-                (long)(sizeof(message) - 1)) {
-                fail("write U2 message failed\n");
-            }
-
-            if (user_yield() != 0) {
-                fail("U2 yield failed\n");
-            }
-
-            return 23;
+        if (user_tag == 2 || user_tag == 3) {
+        static const char spawned[] = "[U2] fresh image OK\n";
+        static const char executed[] = "[exec] fresh image OK\n";
+        const char* text = user_tag == 2 ? spawned : executed;
+        const size_t length = user_tag == 2 ? sizeof(spawned) - 1 : sizeof(executed) - 1;
+        if (user_write(text, length) != (long)length || user_yield() != 0) {
+            fail("fresh demo write/yield failed\n");
         }
-
-        if (user_write(message, sizeof(message) - 1) !=
-            (long)(sizeof(message) - 1)) {
-            fail("write U3 message failed\n");
-        }
-
-        if (user_yield() != 0) {
-            fail("U3 yield failed\n");
-        }
-
-        return 37;
+        return user_tag == 2 ? 23 : 37;
     }
 
     if (user_tag > 1) {
@@ -200,7 +181,13 @@ int main(unsigned long user_tag) {
             fail("write reap message failed\n");
         }
 
-        const long spawned_id = user_spawn(2);
+        if (user_spawn_program(UINT64_MAX, 0) != -1 ||
+            user_exec_program(UINT64_MAX, 0) != -1) {
+            fail("invalid program ID accepted\n");
+        }
+
+        const long spawned_id =
+            user_spawn_program(USER_PROGRAM_WORKER, 3);
         if (spawned_id < 0) {
             fail("spawn U2 failed\n");
         }
@@ -264,7 +251,7 @@ int main(unsigned long user_tag) {
                     fail("write fork result failed\n");
             }
 
-            user_exec(3);
+            user_exec_program(USER_PROGRAM_WORKER, 17);
             fail("exec returned\n");
         }
 

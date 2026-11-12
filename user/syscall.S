@@ -70,4 +70,15 @@ user_waitpid:
     ecall
     ret
 
+.global user_spawn_program
+user_spawn_program:
+    li a7, SYSCALL_SPAWN_PROGRAM
+    ecall
+    ret
+
+.global user_exec_program
+user_exec_program:
+    li a7, SYSCALL_EXEC_PROGRAM
+    ecall
+    ret
 .section .note.GNU-stack, "", @progbits

@@ -10,6 +10,7 @@ CTEST ?= ctest
 TEST_BUILD_DIR ?= test/build/cmake
 SYNC_DEST ?= /mnt/d/PROJECTS/C/tinyos
 OPTIMIZATION ?= -O0
+TASK_STRESS_ROUNDS ?= 500
 
 ARCH_FLAGS = -march=rv64imac_zicsr_zifencei \
              -mabi=lp64 \
@@ -36,10 +37,15 @@ CXXFLAGS = --target=riscv64-unknown-elf \
 DEPFLAGS = -MMD -MP
 
 USER_BUILD_DIR = user/build
-USER_OBJS = \
+
+USER_COMMON_OBJS = \
     $(USER_BUILD_DIR)/start.o \
-    $(USER_BUILD_DIR)/syscall.o \
+    $(USER_BUILD_DIR)/syscall.o
+USER_DEMO_OBJS = $(USER_COMMON_OBJS) \
     $(USER_BUILD_DIR)/main.o
+USER_WORKER_OBJS = $(USER_COMMON_OBJS) \
+    $(USER_BUILD_DIR)/worker.o
+USER_OBJS = $(sort $(USER_DEMO_OBJS) $(USER_WORKER_OBJS))
 
 USER_CFLAGS = $(ARCH_FLAGS) -std=c11 -Wall -Wextra $(OPTIMIZATION) -g \
     -ffreestanding -fno-builtin -fno-stack-protector -fno-pie \
@@ -61,6 +67,11 @@ OBJS = \
     kernel/arch/riscv/panic.o \
     kernel/task/timer.o \
     kernel/task/sched.o \
+	kernel/task/task.o \
+	kernel/task/task_table.o \
+    kernel/task/user_task_create.o \
+    kernel/task/user_task_exec.o \
+    kernel/task/user_task_exit.o \
     kernel/mm/vm.o \
     kernel/arch/riscv/vm_arch.o \
 	kernel/runtime/cpp_runtime.o \
@@ -71,6 +82,7 @@ OBJS = \
 	kernel/mm/user_address_space.o \
 	kernel/process/process.o \
 	kernel/process/spawn.o \
+	kernel/process/builtin_program.o \
     kernel/user/user_image.o \
     kernel/user/user_elf.o \
     lib/string.o \
@@ -78,11 +90,20 @@ OBJS = \
 
 DEPS = $(OBJS:.o=.d) $(USER_OBJS:.o=.d)
 
-.PHONY: all user clean compdb debug qemu sync sync-dry-run test test-qemu
+.PHONY: all user clean compdb debug qemu sync sync-dry-run test test-qemu test-stress
 
 all: kernel.elf
 
-user: $(USER_BUILD_DIR)/demo.bin
+user: $(USER_BUILD_DIR)/demo.bin $(USER_BUILD_DIR)/worker.elf
+
+$(USER_BUILD_DIR)/demo.elf: $(USER_DEMO_OBJS) user/user.ld
+	$(LD) --no-relax -T user/user.ld $(USER_DEMO_OBJS) -o $@
+
+$(USER_BUILD_DIR)/worker.elf: $(USER_WORKER_OBJS) user/user.ld
+	$(LD) --no-relax -T user/user.ld $(USER_WORKER_OBJS) -o $@
+
+kernel/user/user_entry.o: $(USER_BUILD_DIR)/demo.bin \
+    $(USER_BUILD_DIR)/demo.elf $(USER_BUILD_DIR)/worker.elf
 
 $(USER_BUILD_DIR):
 	mkdir -p $@
@@ -92,9 +113,6 @@ $(USER_BUILD_DIR)/%.o: user/%.c | $(USER_BUILD_DIR)
 
 $(USER_BUILD_DIR)/%.o: user/%.S | $(USER_BUILD_DIR)
 	$(CC) $(USER_CFLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(USER_BUILD_DIR)/demo.elf: $(USER_OBJS) user/user.ld
-	$(LD) --no-relax -T user/user.ld $(USER_OBJS) -o $@
 
 $(USER_BUILD_DIR)/demo.bin: $(USER_BUILD_DIR)/demo.elf
 	$(OBJCOPY) -O binary $< $@
@@ -141,6 +159,9 @@ test-qemu:
 	python3 test/verify_prepare_rollback.py
 	python3 test/verify_task_creation_rollback.py
 
+test-stress: test
+	python3 test/verify_task_table_stress.py --rounds "$(TASK_STRESS_ROUNDS)"
+
 compdb: test
 	bear -- $(MAKE) -B all
 	python3 test/merge_compile_commands.py compile_commands.json "$(TEST_BUILD_DIR)/compile_commands.json"
@@ -151,7 +172,7 @@ clean:
 		kernel/arch/riscv/*.o kernel/arch/riscv/*.d \
 		lib/*.o lib/*.d \
 		*.o *.d test/tinyos_tests $(USER_OBJS) $(USER_OBJS:.o=.d) \
-		$(USER_BUILD_DIR)/demo.elf $(USER_BUILD_DIR)/demo.bin
+		$(USER_BUILD_DIR)/demo.elf $(USER_BUILD_DIR)/demo.bin $(USER_BUILD_DIR)/worker.elf
 	if [ -f "$(TEST_BUILD_DIR)/CMakeCache.txt" ]; then \
 		$(CMAKE) --build "$(TEST_BUILD_DIR)" --target clean; \
 	fi

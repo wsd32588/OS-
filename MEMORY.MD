@@ -1,6 +1,162 @@
 # TinyOS 项目记忆
 
-最后更新：2026-11-11
+最后更新：2026-11-13
+
+## 夜间GitHub检查点：B18完成，保留B19当前草稿（2026-11-13）
+
+用户明确“先上传git，有点晚了”，本轮仅保存当前项目进度，不继续代写文件系统。include/fs/builtin_fs.hpp与kernel/fs/builtin_fs.cpp已由作者创建，read_at按EOF/短读/long范围错误-1及显式返回转换完成；BuiltinFileSystem::init仍空草稿、lookup未定义、FS尚未接主Make/宿主/boot，不能说B19已实现或验收。
+
+上传前实际make -j4与make test均通过（当前已接入的B18主线，不覆盖未接线FS草稿）。本次提交范围为TinyOS源码/测试/文档和阅读约定，包含B16—18成果及B19进行中进度；根目录新出现的Windows目录扫描临时文件不纳入。原main已比origin领先一个B15提交，正常push会一并上传。提交/远端最终状态以git log和远端核对为准；无clean或整仓格式化。下次从B19 init/lookup继续，read_at无需重复下发。
+
+## 配套阅读偏好：《操作系统：设计与实现》（2026-11-12）
+
+作者手边有此书，明确希望在适合的阶段收到相关部分的阅读提示，已写AGENT教学约定。已回答第三版、中文上下册，用户报译者“陈渝和湛卫军”（原话保留，不由网络异文替换用户书目信息）。后续按当前问题提示小节、阅读目的及TinyOS对应，不凭MINIX源码展示顺序推断历史开发顺序，不把阅读当新增验收作业。第三版原书目录已查，B19先读第5章5.1文件（访问/操作），及5.7实现中头文件/全局结构部分；中文实书页码未核，不套英文页码。原书目录参考https://flylib.com/books/en/3.275.1.3/1/ ，官方源码附录https://www.minix3.org/documentation/AppendixB.html。B19代码范围不因阅读版本确认改变。
+
+## B19只读内置文件完整任务已交付（2026-11-12）
+
+B18已全部收尾，用户问下一步，当前进入BATCH19_BUILTIN_FILE_SYSTEM.md：先建立有名字的只读字节序列，不同时开磁盘/FD/目录树。新include/fs/builtin_fs.hpp与kernel/fs/builtin_fs.cpp，namespace tinyos::fs；BuiltinFile{path span,bytes span; long read_at(offset,dst)const noexcept}，BuiltinFileSystem固定8记录、init一次全预检再提交、lookup精确完整绝对路径返回借用const记录指针，禁复制移动保持地址稳定。描述值复制，名字/字节永久只读借用，空文件合法；路径<=127不含NUL、拒空组件/组件.或..，无规范化/真实目录遍历。
+
+boot私有constinit FS登记/bin/demo、/bin/worker及/etc/about(18bytes TinyOS builtin fs\n)，查找/实际读取ELF magic和about按返回长度输出，再从lookup结果bytes构造原B18镜像数组。文件表管名字、registry管ELF解析缓存，原编号ABI和用户生命周期保持，原incbin字节不复制。read_at无全局位置，EOF/空目标先返回0、减法算count、超过long返回范围先-1、仅写实际字节，不处理用户VA/PTE；后续路径入口/FD位置/块设备磁盘格式另分批。
+
+完整接口/所有权/boot接线/Make/固定P0/P1P2/三题已一次交付；核心作者实现，助手维护宿主接线和例行验证。P0为真实纯算法初始化事务/路径/二进制/短读/EOF、boot实际FS→ELF来源与原正常35页资源链、原宿主/500压力，不加新框架。独立只读边界审查无阻塞。
+
+准备.cache/batch19-preparation-20261112/results.json：建议头自包含/重复包含、constinit、span调用/借用记录和接回原registry在RV64及native C++20均无诊断，about长度18/long范围宏已确认，正式源配置hash保持。没有实现FS方法或运行B19功能/P0，无提交推送。下一步作者新建头/实现，先写BuiltinFile::read_at，再init/lookup及boot；三题留功能/P0后收尾。
+
+## B18功能/全部既定P0/三题归档完成，本批收尾（2026-11-12）
+
+多内置ELF选择已由作者完成：DEMO0/WORKER1，新12/13分离编号与入口参数，旧8/10默认DEMO，Task/Process身份与原事务保持。三题原答和集中澄清/修正版全存B18，不重答。正式RX3962/929、RW各4152；完整/三次增量及两个ELF嵌入逐字节验证通过。registry13项（真实配置/parser、host MM替身）与新12/13编号0参数0真实QEMU11项通过。
+
+正常资源20项全过：五份空间各7页/35合法free、运行alloc21/净恢复14、三次reap零PMM，双WORKER退出23/37，EXEC保持ID5/parent3/Task/Process/context/frame/内核栈及完整fresh a0=17，最后两S ticks。指定WORKER EXEC(1,17)第4次分配NULL候选3PA精确回收根最后、旧7页/映射/frame/parent/satp保持，旧用户999/5678/EE实际继续后真实重试seed123/BSS新WORKER退出37。证据.cache/batch18-qemu-p0-20261112-s1lrucp6/。
+
+make test及持久500轮压力通过：2500宿主记录，2000真实worker（spawn/fork各1000、exec/fault各125、满槽拒绝500），逐轮PMM/记录/旧ID通过，alloc18375/free18382含root最后7；旧8/10真实兼容。证据.cache/b18-host-stress-20261112-2218/。只改压力脚本旧boot配置锚点及test/README；其余探针都隔离.cache，82正式源/配置hash保持，无clean/提交推送。
+
+统一汇总.cache/batch18-final-20261112/summary.json，registry/、build-and-zero/俱全；B18第12节记录完整执行路径、范围/限制，README/路线/模块索引已更新。旧spawn.hpp未引用残留属非功能整理；P1/P2不追加。下一阶段按已定路线进入文件系统，具体完整任务待下一批交付；正常演示观察用timeout20s。
+
+## B18第3题已归档，集中理解收尾完成，既定P0正在补齐（2026-11-12）
+
+作者贴registry入口检查/prepare及spawn候选release说明旧exec未销毁，核心正确。原答已按原内容排版存B18第10节；纠正EXEC候选清理定位在user_task_exec.cpp，spawn.cpp是新建路径。未知ID分配前拒绝，create/load失败候选归调用者；仅候选成功后进入切根/释放旧空间/adopt提交。准备失败旧空间/栈/数据保持，dispatcher旧a0=-1从ecall后继续；cleanup失败/提交失败fatal。三题原答/审查/修正版全归档，不要求重答。此时完整P0仍在并行验证，不能先宣告整批完成。
+
+## B18第2题原答已归档与澄清（2026-11-12）
+
+作者回答私有data/BSS、text/rodata共享、fork复制Task及PC/现场问题，原答已逐字存当批第10节。已实读loader/clone/create：当前全部用户内容页（含代码/rodata/栈）各自分配，共享内置ELF源不等于共享装载PA；text与rodata同一RX页不等于跨任务共享。eager fork新Task/ID/独立内核栈frame/Process，复制全部用户页并重建同VA/权限、新PA，复制trap_frame值而非Task或frame指针。重新装ELF会重置运行data/BSS、丢用户调用栈，不能配合当前sepc/寄存器续跑；正常fork会继承映射语义。第1/2题已澄清不重答，第3题未答；整批P0仍待剩余项。
+
+## B18第1题原答已归档与澄清（2026-11-12）
+
+作者原答逐字归档当批第10节：1选ELF/17入口参数的用途方向正确；纠正编号由builtin_program查镜像而非调度，公开task_id与调度槽分开。EXEC(worker1,17)成功fresh a0=17，不是USER_PROGRAM_WORKER1；SPAWN调用者a0=新公开ID/孩子独立frame a0=17，EXEC保持原ID。第1题解释后不重答，第2/3题未答；正常路径已过，整批P0资源/边界/OOM/压力仍未全做，不因开始理解题提前宣告B18收尾。
+
+## B18正常QEMU已通过：原8秒观察窗口偏短（2026-11-12）
+
+作者完成DEMO分支合并/新spawn及worker去重后，make -j4成功且当前无需重建。用户8秒日志停在spawn+yield，协作者延长20秒真实QEMU确认完整路径通过：worker成功恰两次，ID4退出23、ID5退出37、父ID3隔离成功退出0，U0/ID2此前退出0；最后继续至少两S ticks，无fault/halt，timeout124为预期限时结束。证据.cache/batch18-observe-20261112-220621-3/results.json与qemu.log，捕获产品源hash保持。今后完整正常演示用timeout20s（原8秒偏短），无需为这段截断日志改调度代码。此为正常路径通过，既定资源计数/registry拒绝/OOM/旧ABI/压力等完整P0尚未全执行，B18未整批收尾。
+
+## B18 worker文件名已修并构建通过，DEMO体积/演示待修（2026-11-12）
+
+实际新源误命名user/wrok.c，协作者按用户报错定位后仅改名为user/worker.c，字节保持。make user/build/worker.elf通过，RX1073/RW4152、两LOAD。make user当前另被DEMO一页断言阻止；主main仍重复tag2/3分支，且spawn写成旧user_spawn(3)，应新user_spawn_program(USER_PROGRAM_WORKER,3)，否则创建DEMO/tag3退出37与等待23冲突。worker已补yield后全数据/栈检查，但成功消息在yield前后各打印一次，删除前一块，仅保留校验后一次。
+
+临时副本仅合并DEMO旧tag2/3分支的共同write/yield并修newspawn，实际O0链接通过，RX3962/RW4152；候选源/构建日志.cache/batch18-worker-name-review-20261112/。正式main/worker内容未代改，尚未全kernel/QEMU，下一步作者合并重复分支、修新spawn和worker重复输出，再整批验证。
+
+## B18 boot与构建接线已修，下一步实现worker（2026-11-12）
+
+最新复查：WORKER incbin已移到kernel/user/user_entry.S的.rodata.user_image，boot/entry.S恢复只含入口/栈；旧DEMO规则已删除，make -n user不再报覆盖，DEMO仅链start/syscall/main，缺worker.o正确归worker.elf。当前停止原因是user/worker.c尚未实现，接下来按B18写独立worker及正常DEMO的新选择调用；尚未完整构建/QEMU。
+
+作者已同步main/private.h/boot_start_user两参数，局部两个ELF span配置一次、新prepare两份DEMO后发布/失败全清/reaper保持；main.cpp与boot_stages.cpp目标RV64语法检查无诊断。误删include/user/user_elf.h已由协作者只恢复该文件，内容与index/HEAD一致。当前作者把WORKER incbin追加到了kernel/boot/entry.S末尾的.bss.stack，须整块移至kernel/user/user_entry.S原.rodata.user_image中；boot入口不承载ELF字节。Make新正确DEMO规则后仍残留旧USER_OBJS规则，后者覆盖前者；make -n user实报overriding recipe并因worker.c未建停止。删除旧demo规则，保留分组链接；worker.c是下步未实现。未代改本次产品/未QEMU。
+
+## B18 Makefile复查：分组已建，链接规则待补（2026-11-12）
+
+作者已补两处syscall break，当前四case协议静态正确。Make已有COMMON/DEMO/WORKER分组，但demo仍以USER_OBJS并集依赖/链接，尚无worker.elf规则/user双目标/incbin两ELF依赖、新builtin_program.o及worker.elf清理条目。make -n user实际因不存在worker.c而报worker.o needed by demo.elf，未执行构建或clean。集中给出全部Make修正；worker.c/incbin新标签及boot仍后续未写，不当作本轮新增错误，下一步补规则后创建独立worker并统一boot。
+
+## B18 Makefile之前阶段检查：主体可编译，三处接线待修（2026-11-12）
+
+复查更新：作者已删除spawn旧配置/状态、补编号头<stdint.h>及syscall包含、分开新旧case。编号头独立宏检查现通过。当前只剩旧SPAWN8与EXEC10分支末尾各缺break，实际目标编译报两条implicit-fallthrough；会继续落入12/13，需在各自右花括号前补break。boot仍旧引用属于后续未接，暂未全链接/QEMU；不重复要求已修三项。
+
+作者已写prepare/两参数spawn/EXEC从sched薄壳到模块传program_id、新12/13用户包装。configure与prepare静态正确，候选失败归调用者、fresh a0/切根事务保持。范围内4个C++实现及实际Make默认GNU模式syscall.c目标语法无诊断，4头自包含/重复包含和用户syscall.S组装通过；编号头独立展开宏失败，缺<stdint.h>。证据.cache/batch18-stage-review-20261112/results.json，产品hash保持。
+
+集中发现：syscall.c把旧SPAWN8/EXEC10错误改成a0编号/a1参数，同时没新12/13 case；应将现双参case改为PROGRAM12/13，再补旧8/10显式DEMO+a0参数。spawn.cpp仍保留旧configure_builtin_spawn及五个私有配置，boot只登记旧配置会导致新registry未配置；spawn应只保留编排，旧spawn.hpp等boot改新接口后删除。builtin_program.h需自己include<stdint.h>。Make/boot/worker仍属后续未做，未强行全链接或QEMU；本轮未代改产品。
+
+## B18镜像配置函数已写，静态检查通过（2026-11-12）
+
+作者已实现builtin_program.cpp的configure_builtin_programs：私有两记录/共同布局/栈顶/root，根PhysAddr与三VA检查、安全栈顶加法、两ELF局部解析与基本元数据检查、全通过后复制配置/root最后提交，重复配置拒绝。协作者核对当前源码并用实际RV64 C++20选项fsyntax-only，无诊断；仅配置函数审查，不代表prepare/调用接线或真实QEMU/P0已通过。局部parsed_layouts在函数内，g_programs等为.cpp匿名namespace长期私有状态。下一步迁prepare，先完整宽度编号检查再取记录/分配；产品未代改。
+
+## B18多内置ELF完整任务已交付（2026-11-11）
+
+B17已收尾，下一批BATCH18_BUILTIN_PROGRAMS.md已一次交付。固定DEMO0/WORKER1两份独立ELF，新syscall12/13以a0=uint64 program_id/a1=argument选择；旧8/10及用户spawn/exec保持默认DEMO。新增process/builtin_program.hpp/cpp拥有一次性只读配置，两个局部解析结果全部成功后最后提交root；复制layout/span描述，永久借用incbin字节，未知完整宽度ID在索引/PMM前拒绝。prepare借出候选归调用者清理，spawn只编排，exec保持原事务；Task/Process不加镜像字段，fork仍复制运行页。
+
+boot移除单ELF预解析stage，统一两镜像配置及两份DEMO prepare，保留两阶段发布/失败全清/ID3 reaper；Make独立两个入口ELF并显式补incbin依赖，新增worker seed123/BSS两页，正常spawn参数3退出23、fork后exec参数17退出37，身份/35页资源口径保持。既定P0包含原压力500及一准备OOM重试，脚本Make/boot锚点适配协作者负责，无追加作者框架作业。
+
+临时准备.cache/batch18-preparation-20261111/results.json：RV64 C++20头/接口语法通过；按O0加入两包装/坏编号检查并合并旧tag2/3重复分支，DEMO RX3962/WORKER RX857、RW各4152、两LOAD/无未定义符号，正式产品源哈希保持。仅方案可行性，尚无正式B18实现/新内核QEMU/提交推送。下一步作者先写共享编号头、新镜像头和registry配置，再按当批顺序接线；三题留功能/P0后一次收尾。
+
+## B17三题原答/集中澄清归档，本批收尾（2026-11-11）
+
+作者原答逐字归档B17。第一题隐藏依赖/不公开全局方向正确；内部参数是受控借用，各模块拥有关系保持。第二题纠正create只在失败时source不动、成功adopt清源；fork discard清理正确；exec准备失败实际用UAS release或reject_candidate，exec_commit_fail只负责提交错误停机，不能当清理。fresh a0入口参数保持正确，失败回旧程序仍a0=-1。第三题Task_destroy只DEAD+用户空间释放，Task/栈仍在，不能再RUNNING/root校验；资源释放Process->UAS release、槽回收table.recycle、新Task分配table.allocate、既有任务选择sched_reschedule分别明确，调度不分配Task/ID。
+
+集中解释后不重答、不加测试，B17功能/P0/路径/三题全部收尾，索引与路线已更新。下一步交付不同内置ELF选择与EXEC完整批次，暂不继续拆模块；本轮仅文档，无新产品改动/测试/提交推送。
+
+## 用户授权拆分B17三实现，全部既定P0通过（2026-11-11）
+
+作者明确“你来拆吧”。其已先修SPIE、finish薄壳和reaper<0判断（期间同步编辑），协作者保留最新修改，按当前11个函数体搬为user_task_create.cpp152行(create+fork+快照/cleanup)、user_task_exec.cpp110行、user_task_exit.cpp152行(finish/find_reaper/关系/释放)，统一header接口不变，Make用三对象替换旧user_task.o，旧未跟踪user_task.cpp已移除，拆前副本.cache/batch17-split-20261111/。仅新文件局部clang-format，迁移11函数体忽略排版/冗余static全部一致，scheduler只缩进finish调用；未重写算法或提交推送。
+
+make及make test-stress全过：宿主工厂500轮2500记录，真实QEMU500轮2000子进程(spawn1000/fork1000/exec125/fault125/满槽拒绝500)，逐轮PMM/记录平衡，压力证据.cache/task-table-stress/20261111-230747-30/results.json。normal真实双S/U ID2/4/5/3退出0/23/37/0、parent/EXEC身份/栈保持、35free/21alloc/净14、reap零PMM通过；五槽真实活孤儿转交保持全部现场/空间和结果通过。EXEC失败隔离短镜像第4次分配NULL，候选3PA唯一回收根最后、旧frame/全部旧页/映射/parent/satp/kernel模板/PMM保持，真实旧用户999/5678/EE继续，后真实重试成功fresh tag2同ID退出37由父收集。所有目标无诊断，正式源验证期间hash保持。
+
+汇总.cache/batch17-final-20261111/summary.json及normal/orphan/exec-failure；全部既定P0通过，不扩P1/P2。B17文档已归档实现/验证，原三题待答后集中澄清归档，下一步再多内置ELF选择。未提交推送。
+
+## B17主体已迁，当前两处行为缺口与实现文件细分建议（2026-11-11）
+
+用户要求检查user_task.cpp并担忧又成大文件。当前418行，create/fork/exec/finish/find_reaper及helpers已迁；作者在复查期间同步修掉原私有调用/引用等编译错误，不能重复报告旧错误。最新强制重编user_task.o通过，sched.o有4warning：finish_user_task检查后空，缺模块finish+直接reschedule（2unused参数+缺返回）；旧exec_commit_fail unused应删。关键运行错误仍为exec fresh_frame.sstatus=kStutasSpp(1<<8)，应SPIE(1<<5)且SPP0；find_reaper在scheduler仍重复完整验证，改调用新模块接口。无QEMU/产品代改。
+
+职责已有明确状态边界，文件仍有创建/替换/终止三条事务，可保留user_task.hpp统一接口，将实现分user_task_create.cpp(create+fork)、user_task_exec.cpp、user_task_exit.cpp(finish+find_reaper及关系helpers)，不新增状态类、不拆散提交事务；Make用三对象替换原user_task.o。先补当前行为缺口，再按此机械搬迁，B17文档已记当前问题及划分，验收范围不增。
+
+## B17 find_reaper已迁，create草稿待修（2026-11-11）
+
+作者已建private/user_task.hpp与user_task.cpp，find_reaper显式表/ID版本可保留。create草稿需允许argument0及boot parent=-1；find_page传&source.user_memory；补arch/riscv/trap.h完整frame定义；旧参数名换stack_top/argument；context.sta换context.frame->sstatus，SPIE在新实现定义constexpr。adopt已清source。协作者集中列明修正，不代改产品或做新模块通过声明，其余fork/exec/finish仍待作者迁移。
+
+## B17用户任务操作拆分完整任务已交付（2026-11-11）
+
+用户要求下一步，BATCH17_USER_TASK_OPERATIONS.md已一次交付：新private/user_task.hpp+kernel/task/user_task.cpp，无常驻状态，namespace tinyos::user_task五接口create(table,kroot,entry,top,source&,arg,parentid)、fork(table,parent&,constframe&)、exec(current&,frame&,kroot,arg)、finish(table,current&,constframe&,kroot,reaperid,reason,status)->void、find_reaper(consttable&,id)。scheduler保留current/idle/root/reaper配置、SIE/current/SPP校验、boot登记、peek/reap父权限与调度，C API不改，Make加user_task.o；不同时拆spawn镜像配置。
+
+创建C薄壳先拒space=null再转引用，父身份仍boot/runtime解析；create借入source失败保持，fork/exec自有candidate失败模块内清理，薄壳不重复释放。fork值snapshot、子独立frame/a0=0，dispatcher原sepc+4/父a0保留；exec完整提交切根release/adopt/fresh/activate与提交后fatal不变。finish负责收养/记录/DEAD/切根释放/日志，返回后薄壳直接reschedule，不重新经过RUNNING校验；根无孩子可退出。独立只读审查已核边界。
+
+接口准备.cache/batch17-preparation-20261111/目标RV64 C++20头与所有调用签名无诊断；未实现/运行正式模块，产品源码未改。完整P0为原正常资源链、make test-stress500、一孤儿及一准备失败清理重试，协作者承担，不扩历史矩阵。下一步作者先建头/实现与Make，迁find_reaper/create，再fork/exec/finish及薄壳，整批后集中审查。未提交推送。
+
+## B16原答/集中澄清归档，本批收尾（2026-11-11）
+
+作者三题原答逐字存入B16，修正版分开。纠正公开ID是Task.task_id，next_task_id_为下一ID计数器；高水位/存储复用与旧ID失效分开。禁移动根因是frame->内嵌stack、Task.proc->同表Process等稳定地址，不是类型只能创建单例。回收不unmap/free或清栈字节，仅清metadata/frame指针及Process结果/parent，最后UNUSED；allocate才在栈顶下方放置/清初始frame，新USER发布设置用户sp。reset失败须表和外层配置一致；父权限依赖当前可信USER/parent，切根依赖活动satp/kernelroot及事务时序，属于运行编排层，表不反查全局。下一批用户事务可连显式根依赖迁移，表职责不扩。
+
+集中解释后不要求重答、不加测试，B16功能/P0/500轮压力/三题全部收尾，索引路线已更新。下一步交付用户任务操作拆分完整批次，再继续多内置ELF；本轮仅文档，无产品修改/重复测试/提交推送。
+
+## B16功能/全部P0/压力通过，进入原三题理解收尾（2026-11-11）
+
+作者问下一步，协作者按原定范围补齐TaskTable剩余验收。原B15正常accounting和一个活孤儿探针仅改为新表访问，当前真实双S/U链ID2/4/5/3退出0/23/37/0、parent/EXEC身份和栈保持、35free/21alloc/净14、三次reap零PMM及最后两S ticks均过；五槽自然SPAWN父exit17转交活孩子、保留父结果、根实际收二者通过。13个公共表API检查当前全过；另10个宿主边界包括INT_MAX最后ID/耗尽不变、回收不重开ID、reserved Process忙时整表字节不变均过。边界只隔离头加friend注入计数器、context模拟，产品方法不改。
+
+证据.cache/batch16-final-20261111/summary.json与normal/orphan/host-boundaries；结合已通过make test-stress的500轮/2500宿主记录与2000真实子进程，全部既定P0通过，70余正式源哈希保持，正常RX4034，无产品修改或提交。已写B16完整执行路径，原三题待作者答并集中归档；不新增测试门槛。下一批分离fork/exec/退出等用户任务操作，scheduler保留当前校验和重调度薄壳，具体完整接口在下一批交付。重复return、reset后空循环非功能冗余可后续整理，不阻塞收尾。
+
+## 用户授权测试工厂与500轮压力测试已实现通过（2026-11-11）
+
+作者已完成TaskTable接线、高水位不收缩/C头污染修复及Make对象加入。用户要求test工厂与几百轮五任务死后重建；协作者新增test/task_factory.hpp、test_task_table.cpp、host_task_context.cpp，真实表/Process、仅context布局模拟，500轮五槽全回收再分配=2500单调ID，空洞/旧ID/稳定地址/清理/零PMM均过，接入原make test。
+
+新增test/user_stress/{task_factory.h,task_factory.c,main.c,observer.inc}及test/verify_task_table_stress.py，Make test-stress（TASK_STRESS_ROUNDS默认500）先宿主再隔离QEMU。副本省略两S示例，保留1个USER根、每轮创建/收集4个USER（满5槽），根最后退出；不新增S回收或根退出后重开bootstrap策略。交替spawn/fork，部分worker exec/fault，用户检查实际ID/结果/栈/数据/全buffer隔离和重复wait拒绝；只读PUTCHAR检查点及PMM活PA账本观察每轮完全回收/零余额漂移/唯一free。
+
+make test-stress真实全过：500轮2000子进程，spawn1000/fork1000/exec125/fault125/槽满拒绝500；运行期alloc18375，逐轮free等量且基线保持，根最后free7后总18382。RX2956、RWmem4144、O0/一页断言不变；编译无诊断/nm-u空，正式源当次哈希保持。最终.cache/task-table-stress/20261111-185955-30/results.json、make-test-stress.log/host-results.log/qemu.log；概要.cache/b16-stress-summary-20261111.json，另4轮和初版500证据保留。只新增测试/入口/文档，无代改作者产品算法/提交推送。B16完整P0仍需原双S演示及一孤儿专项适配复验，不把压力通过说成整批收尾。
+
+## B16 TaskTable主体已写，集中检查仍有接线/高水位问题（2026-11-11）
+
+作者完成Task、clear_metadata及TaskTable方法，当前表主体独立目标编译无诊断。真实task/table/Process.cpp、仅context初始化模拟的13项宿主检查12过1失败：recycle_dead_slot新增尾部UNUSED收缩高水位while违背约定，应删除，并有重复return0。另sched.h新include private/task.hpp使C11包含实际namespace错误，应移到sched.cpp；Make尚未加入task.o/table.o，sched仍旧数组/ID/高水位，需后续按原任务统一接线。其它方法边界/事务/孔洞复用、busy失败保持与栈保留检查通过。证据.cache/batch16-table-review-20261111/，B16已记完整清单；未代改产品、未运行QEMU/提交。
+
+## 作者提出现在开始拆sched，B16 TaskTable完整任务交付（2026-11-11）
+
+B15已全部收尾。作者现在询问开始sched跨文件拆解；本轮已按稳定边界交付BATCH16_TASK_TABLE.md，调整原“先多ELF再拆”的先后。只先提Task记录与五槽TaskTable（同槽Process、单调ID、高水位、分配/查找/安全回收），current/idle/kernelroot/reaper及调度/父权限/用户事务暂留sched；后续独立迁用户操作，再做多内置ELF。Task::clear_metadata供表和idle共用，不改state/栈；表永久constinit存储，Task/表禁复制移动；at/process_at按容量判界，正常遍历用high_water。reset全Process预检后提交，sched_init仅成功后清外层配置；recycle不减高水位/回退ID，不切根/释放页，父权限仍由原reap核验。完整接口/接线/注意点/P0一次交付，核心仍作者实现、协作者复验。
+
+接口准备在.cache/batch16-preparation-20261111/：RV64 C++20头语法无诊断、constinit实例/禁复制移动/8192栈检查通过；正式产品源码未改，未实现或运行TaskTable。只读独立审查确认容量/高水位、idle清理入口、稳定地址和失败不提交边界。下一步作者先搬private/task.hpp及clear_metadata、再写表与sched接线，整批后集中审查；不自动提交推送或全仓重排。
+
+## B15三题原答与集中澄清归档，本批收尾（2026-11-11）
+
+作者原三答已逐字存入BATCH15，协作者修正版明确分开。第一题正确：fork用创建者自身公开ID，EXEC保持、reset清-1。第二题纠正matched_id不是重建关系凭据，是选中现有孩子并在copy后消费的实际ID；pending保持任务/空间/关系/输出，copy失败保留exit_info+DEAD槽+parent，跨页用户buffer可有前缀。第三题纠正DEAD孩子不能随退出父一起销毁：活/DEAD都立即转指定root，结果留待新父分别收集；退出父自身结果与parent也保留。原因是父退出后不能再承担收集责任，而非算法绝对无法在父reap后凭保存旧ID查到孩子。集中澄清后不要求重答、不追加门槛。
+
+B15功能/全部P0/路径梳理/三题均完成，索引与路线已更新。下一步按既定顺序准备不同内置ELF选择与EXEC的完整批次，再阶段收尾与TaskTable跨文件拆分；本轮未交付新批次、未改产品或重复测试，仅更新文档，未提交推送。
+
+## B15全部既定P0通过，转入原三题理解收尾（2026-11-11）
+
+基线功能提交d3ba173。协作者完成剩余验收：boot/创建24个真实函数提取宿主检查；正常QEMU关系/EXEC身份与35free/21新alloc/净14、三次reap零PMM；综合真实syscall非父WAITPID/REAP拒绝、pending -2/0、坏输出-1保留后合法wait-any重试、旧REAP成功1/重收-1；五槽自然SPAWN的活孤儿父exit17及DEAD孤儿父真实load fault13两例转交root，孩子现场/空间或结果保持，父自己的结果保留且root实际收两者。全部通过，70正式源码/配置哈希不变，无产品修补/提交/推送。
+
+证据.cache/batch15-final-20261111/summary.json及boot-host、accounting、syscalls/attempt2、orphans目录；正式RX4034/RWmem4152、nm-u空，沿用提交前make/test通过。宿主CSR/context/page查找为模拟，硬件行为由隔离QEMU补充。syscall首轮误报是观察包含active内核栈，修探针后过；不是产品缺陷。更深P1/P2不扩大。BATCH15已归档验证/完整执行路径，索引/路线更新为功能P0通过、原三题待答。下一步让作者解释原三题，集中澄清归档后才进不同内置ELF选择/EXEC；TaskTable跨文件拆分仍在进程管理阶段完成后。
 
 ## 用户要求本地提交当前B15进展；下一步为既定验收收尾（2026-11-11）
 
@@ -991,7 +1147,7 @@ root getter 最终 QEMU 临时副本探针通过：初始化前和 sched_init �
 - PMM 以内核末尾和 Device Tree 地址推断可用区，不解析 DTB 内存节点，也没有锁。
 - 当前页表依赖恒等映射才能直接解引用物理页表地址。
 - `sv39_map_page()`/`sv39_unmap_page()` 只处理 4 KiB 叶；空 L0/L1 可由独立接口回收，当前只有单 hart 本地 TLB flush，没有多 hart shootdown、ASID 或权限修改接口。
-- 调度器仍为四槽静态任务池与独立idle，boot创建两S两U；运行期可SPAWN/FORK并复用安全回收槽，EXEC在同Task替换内置镜像。sleep支持BLOCKED和按timer唤醒，REAP为非阻塞三态；尚无父子权限、阻塞wait、动态内核栈或路径式execve。
+- 调度器为五槽静态任务池与独立idle，boot创建两S两U；运行期SPAWN/FORK及安全槽复用、同Task内置EXEC、限父WAITPID/REAP与固定根孤儿收养均已验证。sleep支持BLOCKED和timer唤醒，WAITPID由用户yield重试；尚无阻塞wait、动态内核栈或路径式execve。
 - 私有用户root借用内核模板槽0/2，用户槽1独立；模板及其共享下级表必须持续存活。当前单hart、ASID=0、全局本地刷新，非多hart隔离或通用任意布局管理器。
 - 任务持有完整UserAddressSpace，内部UserMemory管理有界内容页记录；exit先切回内核根再显式释放，默认7页包含1根+4内容+2用户下级表。静态内核栈保留，原loader自身回滚再次失败丢局部归属的历史限制尚未解决。
 - syscall支持字符输出、yield、exit、sleep、WRITE、GET_TIME、REAP、SPAWN、FORK与内置EXEC；WRITE最多256字节固定内核buffer，完整读取成功才输出；GET_TIME写回8字节原始计时器计数。选定U-mode fault复用退出路径，静态内核栈保留；不在用户exit析构内核全局C++对象。

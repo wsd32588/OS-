@@ -8,10 +8,15 @@
 #include "mm/vm.h"
 #include "task/sched.h"
 #include "task/timer.h"
-#include "user/user_elf.h"
 #include "mm/user_loader.h"
-#include "process/spawn.hpp"
+#include "process/builtin_program.hpp"
+#include "task/builtin_program.h"
 
+
+extern const unsigned char user_elf_start[];
+extern const unsigned char user_elf_end[];
+extern const unsigned char user_worker_elf_start[];
+extern const unsigned char user_worker_elf_end[];
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -65,53 +70,6 @@ void boot_console(unsigned long hart_id, const void* device_tree) {
     uart_putchar('\n');
 }
 
-void boot_load_user_elf(UserElfLayout* layout, size_t* elf_size) {
-    uintptr_t elf_start = (uintptr_t)user_elf_start;
-    uintptr_t elf_end = (uintptr_t)user_elf_end;
-
-    if (elf_end <= elf_start) {
-        boot_fail("Invalid embedded ELF size\n");
-    }
-
-    *elf_size = (size_t)(elf_end - elf_start);
-    if (user_elf_parse(user_elf_start, *elf_size, layout)
-        != USER_ELF_OK
-    ) {
-        boot_fail("User ELF parsing failed.\n");
-    }
-
-    uart_puts("User ELF entry: ");
-    uart_put_hex((unsigned long)layout->entry_address);
-    uart_putchar('\n');
-
-    uart_puts("User ELF program header count: ");
-    uart_put_hex((unsigned long)layout->program_header_count);
-    uart_putchar('\n');
-
-    uart_puts("User ELF LOAD count: ");
-    uart_put_hex((unsigned long)layout->load_segment_count);
-    uart_putchar('\n');
-
-    for (size_t i = 0; i < layout->load_segment_count; ++i) {
-        const UserElfSegment *segment = &layout->segments[i];
-
-        uart_puts("User ELF LOAD ");
-        uart_put_hex((unsigned long)i);
-        uart_puts(": offset=");
-        uart_put_hex((unsigned long)segment->file_offset);
-        uart_puts(" va=");
-        uart_put_hex((unsigned long)segment->virtual_address);
-        uart_puts(" filesz=");
-        uart_put_hex((unsigned long)segment->file_size);
-        uart_puts(" memsz=");
-        uart_put_hex((unsigned long)segment->memory_size);
-        uart_puts(" flags=");
-        uart_put_hex((unsigned long)segment->flags);
-        uart_puts(" align=");
-        uart_put_hex((unsigned long)segment->alignment);
-        uart_putchar('\n');
-    }
-}
 
 void boot_init_pmm(const void* device_tree) {
     if (pmm_init(__kernel_end, device_tree) < 0) {
@@ -266,9 +224,7 @@ uint64_t boot_enable_paging(Sv39PageTable* kernel_root) {
 
 void boot_start_user(
     Sv39PageTable* kernel_root,
-    uint64_t satp_value,
-    size_t elf_size,
-    const UserElfLayout* layout
+    uint64_t satp_value
 ) {
     /* kernel_root and satp_value are also read by the instrumented QEMU probe. */
     (void)satp_value;
@@ -277,6 +233,34 @@ void boot_start_user(
         .code_address = DEMO_USER_CODE_ADDRESS,
         .stack_address = DEMO_USER_STACK_ADDRESS,
         .data_address = DEMO_USER_DATA_ADDRESS
+    };
+
+    const uintptr_t demo_start =
+        reinterpret_cast<uintptr_t>(user_elf_start);
+    const uintptr_t demo_end =
+        reinterpret_cast<uintptr_t>(user_elf_end);
+    const uintptr_t worker_start =
+        reinterpret_cast<uintptr_t>(user_worker_elf_start);
+    const uintptr_t worker_end =
+        reinterpret_cast<uintptr_t>(user_worker_elf_end);
+
+    if (demo_end <= demo_start || worker_end <= worker_start) {
+        boot_fail("Invalid embedded ELF range.\n");
+    }
+
+    const tinyos::BUiltinProgramImage images[] = {
+        {
+            std::span<const unsigned char>{
+                user_elf_start,
+                static_cast<size_t>(demo_end - demo_start)
+            }
+        },
+        {
+            std::span<const unsigned char>{
+                user_worker_elf_start,
+                static_cast<size_t>(worker_end - worker_start)
+            }
+        }
     };
 
     if (sched_init(kernel_root) != 0) {
@@ -293,42 +277,37 @@ void boot_start_user(
         boot_fail("Kernel task B creation failed.\n");
     }
 
-    if (tinyos::configure_builtin_spawn(
-            kernel_root,
-            std::span<const unsigned char>(user_elf_start, elf_size),
-            *layout,
-            memory_layout) != 0) {
-        boot_fail("Builtin spawn configuration failed.\n");
+    if (tinyos::configure_builtin_programs(
+        kernel_root, images, memory_layout) != 0) {
+        boot_fail("Builtin program configuration failed.\n");
     }
+
 
     constexpr size_t user_task_count = 2;
     UserAddressSpace spaces[user_task_count]{};
+    uintptr_t entries[user_task_count]{};
+    uintptr_t stack_tops[user_task_count]{};
     int user_task_ids[user_task_count]{};
-    for (size_t i = 0; i < user_task_count; ++i) {
-        if (user_address_space_create(kernel_root, &spaces[i]) != SV39_OK) {
-            release_pending_user_spaces(spaces, user_task_count);
-            boot_fail("Demo user address space creation failed.\n");
-        }
 
-        if (user_memory_load_elf(
-            spaces[i].root,
-            user_elf_start,
-            elf_size,
-            layout,
-            &memory_layout,
-            &spaces[i].user_memory) != SV39_OK) {
+    for (size_t i = 0; i < user_task_count; ++i) {
+        const int result = tinyos::prepare_builtin_user_space(
+            USER_PROGRAM_DEMO,
+            spaces[i],
+            entries[i],
+            stack_tops[i]);
+
+        if (result != SV39_OK) {
             release_pending_user_spaces(spaces, user_task_count);
-            boot_fail("Demo user memory load failed.\n");
+            boot_fail("Demo user space preparation failed.\n");
         }
     }
 
     for (size_t i = 0; i < user_task_count; ++i) {
         const int user_task_id = task_create_user(
-            layout->entry_address,
-            memory_layout.stack_address + SV39_PAGE_SIZE,
+            entries[i],
+            stack_tops[i],
             &spaces[i],
-            static_cast<uintptr_t>(i)
-        );
+            static_cast<uintptr_t>(i));
         if (user_task_id < 0) {
             // Successful transfers have already cleared their source objects.
             release_pending_user_spaces(spaces, user_task_count);

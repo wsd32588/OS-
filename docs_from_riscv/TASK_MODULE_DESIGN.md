@@ -1,9 +1,31 @@
 # Task 组成与模块边界
 
-日期：2026-11-10。本文记录架构上下文与Process拆分、接口及模块分配；不是新的功能批次。
-编码规则见 [CODE_STYLE.md](../CODE_STYLE.md)，最近完成的功能批次为
-[BATCH14](tinyos/BATCH14_BUILTIN_EXEC.md)。
-当前[BATCH15](tinyos/BATCH15_PARENT_AND_WAIT.md)完整任务已交付，作者继续父子生命周期实现。
+日期：2026-11-12。本文记录架构上下文与Process拆分、接口及模块分配；不是新的功能批次。
+编码规则见 [CODE_STYLE.md](../CODE_STYLE.md)，父子关系的功能归档见
+[BATCH15](tinyos/BATCH15_PARENT_AND_WAIT.md)。
+最近[BATCH16：提取固定任务表](tinyos/BATCH16_TASK_TABLE.md)功能/全部P0、500轮压力及三题集中审查均完成。
+最近[BATCH17：分离用户任务操作](tinyos/BATCH17_USER_TASK_OPERATIONS.md)功能/全部P0及三题集中审查归档完成。
+最近[BATCH18：不同内置ELF选择](tinyos/BATCH18_BUILTIN_PROGRAMS.md)功能/全部既定P0及三题原答/集中澄清/修正版归档完成。
+新builtin_program模块拥有只读镜像配置与候选准备，spawn仅组织准备/发布，user_task::exec保持替换事务；
+scheduler不公开全局依赖，Task/Process不增加程序编号或另一套身份。新12/13与旧8/10默认镜像兼容，细节只在当批维护。
+镜像配置/装载选择、正常资源链/准备失败重试和原500轮压力均已验证；当前进程管理阶段收尾。
+当前[BATCH19：只读内置文件](tinyos/BATCH19_BUILTIN_FILE_SYSTEM.md)完整任务已交付，尚未实现：文件表只管名字与只读字节/read_at，
+boot从lookup结果配置现有ELF registry，原任务/进程及syscall生命周期保持；文件系统不操作用户页表或解析ELF。
+文件表复制描述并永久借用底层名字/字节，返回记录指针依赖固定实例寿命；FD/打开位置及磁盘后端在后续独立批次处理。
+
+## 当前拆解安排（2026-11-11）
+
+作者在B15功能/P0/理解收尾完成后提出现在开始拆sched.cpp，调整此前等多内置ELF之后再拆的顺序。
+第一步只提取Task记录与TaskTable：固定五槽和同槽Process、公开ID、高水位、分配/查找/安全回收。
+current/idle/kernel root/reaper仍属于scheduler；调度策略、父权限/收养及fork/exec/退出编排先保持。
+后续再按单独批次迁用户操作，再继续多内置ELF选择；完整接口与P0集中在B16，本文不重复列实现。
+TaskTable已由作者实现并接线，协作者完成宿主/压力/正常原演示/五槽孤儿验证，执行路径见B16。
+第二步采用无状态tinyos::user_task模块，显式接收依赖，迁用户发布/fork/exec/finish，
+scheduler保留current/SPP/SIE校验与最终重调度；finish返回后不得再次要求已DEAD任务为RUNNING。
+新模块不反查scheduler全局、不反调度；完整候选归属、PC/a0与失败策略见B17。
+作者先迁移实现，随后要求协作者直接按事务细分文件，现为user_task_create.cpp(create+fork)、
+user_task_exec.cpp、user_task_exit.cpp(finish+关系)，统一私有头不变；正常/压力/孤儿/失败重试全部通过。
+以下11月9—10日讨论保留历史语境，旧先后顺序不再作为当前前置要求。
 
 ## 当前实现状态（2026-11-09）
 
@@ -52,7 +74,7 @@ fork可共享最后发布阶段，但其输入是运行快照；exec只替换现
 统一创建服务适合与随后多内置镜像选择一起完善，TaskTable的整体提取仍放在本阶段完成后。
 这是新增设计方向与边界，不自动扩张B15验收或代写核心；具体接口及实现批次到交付时一次给齐。
 
-## sched拆分草案：本阶段完成后实施（2026-11-09）
+## sched拆分草案（2026-11-09历史，先后顺序已由B16调整）
 
 作者已确定先完成当前进程管理阶段，再拆sched，替代本节最初建议的“下一批先抽TaskTable”。
 当前先B15父子关系/收集/孤儿收养，之后不同内置ELF选择与EXEC，再按稳定行为实施下面的拆分。

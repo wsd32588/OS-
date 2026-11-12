@@ -1,8 +1,8 @@
 # BATCH15：父子关系、等待收集与孤儿收养
 
-状态：2026-11-11功能与正常主线已接通，DeepSeek首轮私有助手重构已审查应用。
-构建、创建27/收集37个局部断言和QEMU正常主线通过；完整B15的孤儿转交、真实拒绝/重试及页面统计P0仍待协作者收尾，不标记整批完成。
-本地提交前再次make -j4、make test（CTest宿主测试入口）及git diff --check全部通过。
+状态：2026-11-11功能、全部既定P0、执行路径梳理及原三题原答/集中审查/修正版均已归档，本批收尾。
+功能提交为d3ba173，DeepSeek首轮私有助手重构已审查应用；原答中的理解缺口见下文集中修正，不要求重答。
+验证汇总见`.cache/batch15-final-20261111/summary.json`，本轮未修改正式产品源码或新建提交。
 
 导航：[批次索引](README.md) · [上一批](BATCH14_BUILTIN_EXEC.md) · [总路线图](../TINYOS_EVOLUTION.md)
 
@@ -331,6 +331,48 @@ timeout 25s make qemu
 孤儿P0在独立副本调整演示，不能把5槽运行说成原4槽也容得下；不会改正式用户程序来塞测试。
 根带孩子退出及内部清理失败的诊断停机路径须静态审查，更多受控异常试验留P1。
 
+## 全部既定P0验收结果（2026-11-11）
+
+功能基线为d3ba173；正式make/宿主测试通过，kernel无未定义符号，用户RX4034字节、RW memsz4152字节，
+沿用原-O0和一页代码断言。正常主线与三个隔离验证方向全部通过，70项正式源码/配置哈希保持。
+这些探针由协作者完成，不新增作者测试作业，P1/P2仍是选做。
+
+| 验证方向 | 结果与证据 |
+| --- | --- |
+| 登记/创建事务 | 实际函数提取、真实Process.cpp的24项宿主检查通过：非法/重复登记零修改，非READY/缺Process/旧关系拒绝，未登记USER禁止启动，busy sched_init保留配置；boot/runtime创建、满槽失败源空间及ID保持。见`boot-host/results.json` |
+| 正常关系与资源 | 真实QEMU19项通过：boot root3.parent=-1/U0.parent3，SPAWN4/FORK5 parent3；EXEC保持ID/parent/Process/frame地址与内核栈。五份空间各唯一合法释放7页、根最后，总free35/runtime alloc21/净恢复14；三次reap零PMM，结束后两次S-mode timer。见`accounting/results.json` |
+| syscall拒绝/重试 | 真实非父WAITPID与REAP均拒绝，原父仍能收同一孩子；pending为-2/0且输出不变；坏输出地址-1不消费，合法wait-any重试返回实际ID4/状态23；旧REAP成功1收状态37、重收-1；wait调用零PMM。见`syscalls/attempt2/results.json` |
+| 活孤儿 | 五槽自然创建：父2经真实SPAWN创建孩子4，父exit17时孩子READY，转交root3；孩子Task/frame/栈/root/内容页保持，仅parent改变，转交零PMM/satp变化；root真实收父与孩子后退出。见`orphans/results.json`的alive |
+| DEAD孤儿 | 孩子4先exit29，父2随后真实U-mode load fault13；DEAD孩子与原结果转交root3，父自己的FAULT13结果/parent3也保留；root真实WAITPID收两者后退出。见同文件的dead |
+
+上表相对路径均位于`.cache/batch15-final-20261111/`。驱动分别为`boot-host/run_probe.py`、
+`accounting/run_probe.py`、`syscalls/run_probe.py`、`orphans/run_probe.py`；后两者保存了每次隔离源码和日志。
+syscall首轮探针将正在执行的内核栈纳入“不变”哈希，导致观察误报；改为只比较元数据后attempt2通过，
+不是产品缺陷。DEAD孤儿初次构建的C11汇编关键字也仅在探针中修正，未改变正式实现。
+
+宿主事务测试模拟CSR/context初始化和内容页查找，不代表架构行为；真实运行由QEMU副本补充。
+syscall隔离镜像较短且让两S任务尽快返回，其结果不替代正式镜像的页面统计。
+孤儿关系均由真实boot/SPAWN建立，没有直接改parent伪造关系。外部限时停止QEMU不是客体关机。
+本批仍限定单hart、五个静态槽、固定根收养、用户yield重试；任意祖先/subreaper、阻塞等待和根带孩子退出的受控停机探针不并入P0。
+
+## 功能路径梳理
+
+1. boot先建立两份私有用户空间，创建USER时parent暂为-1；全部创建后，一次性登记U1为根收养者，
+   将其他启动USER的parent设为U1的公开ID。登记前全体只读预检，失败不改任何关系。
+2. 运行期SPAWN装入初始ELF，FORK复制当前快照；两者发布新Task前确定真实创建者的公开ID，
+   分配成功后转移候选空间并设置孩子parent。EXEC替换同Task的空间与用户现场，保留ID和parent。
+3. 用户exit/fault时先处理孩子：普通任务把所有直接孩子（含DEAD未收集）交给指定根；
+   自己的parent保持，退出结果另存。随后标DEAD、切内核根、释放自己的用户空间，再调度其他任务。
+   根只有在没有任何直接孩子时才能退出。
+4. 当前父调用WAITPID，内核按公开parent关系查询自己的孩子。尚活返回-2，用户yield后重试；
+   有结果则转成固定24字节wire，先复制到父的用户地址，成功后才reap实际matched_id。
+   无权限、无孩子或复制失败返回-1；复制失败保留内核结果和DEAD槽供合法地址重试。
+5. reap再次核对父权限，reset清空已无资源Process的退出记录和parent，清槽元数据，最后设UNUSED。
+   此处没有页面可重复释放；静态内核栈存储保留，下次分配可复用槽，公开ID继续单调递增。
+
+地址空间寿命结束、退出结果被消费、Task槽重新可用是三个时点：分别由退出释放、WAITPID/reap、
+下次allocate衔接。不能把DEAD当UNUSED，也不能把空间adopt理解为父子收养。
+
 ## 原三题（功能完成后集中收尾）
 
 1. 为什么fork孩子的parent应是父自己的公开ID，而不是父的parent_id或所在槽号？EXEC和reset分别怎样处理这个字段？
@@ -338,6 +380,31 @@ timeout 25s make qemu
 3. A→B→C中B退出时，C已DEAD和仍活着各要怎样处理？为什么不能等B被reap再收养，为什么B自己的结果也不能一起丢掉？
 
 原答、集中审查和协作者修正版继续保存在本文件，不以重复作答或增加测试作为收尾门槛。
+
+### 作者原答（2026-11-11，逐字保留）
+
+> fork的父id自然是父进程的task_id，exec不动父id，reset会重置父id为默认值
+> 因为要这是子进程的task的id，是重新建立关系的凭据，还活着就什么都不动，复制失败保留exitinfo
+> C还活着应该转到A下面当孩子，DEAD则是直接一起销毁，因为如果B已经reap了，就找不到了
+
+### 集中审查与协作者修正版
+
+1. 第一题正确：新孩子parent填实际创建者自己的公开task_id，EXEC保持父关系，reset在确认空间已空后将parent清为kNoParentId=-1。
+   槽索引属于静态存储位置，复用后会承载另一公开ID；父的parent_id则指向祖父，两者都不代表本次创建者。
+2. 第二题部分正确：matched_id确实是实际选中孩子的公开ID，但本次等待不重新建立父子关系。
+   关系已在创建或孤儿转交时确定；matched_id用于标识本次查询、复制和最终消费的同一个孩子。
+   请求-1只是选择规则，不能拿去reap。孩子尚活时，保留任务、空间、关系和用户输出，返回-2供yield重试。
+   结果复制失败时，不仅exit_info保留，DEAD槽及parent关系也保留，不能reset或置UNUSED；用户换合法地址可重试。
+   user_copy_to跨页失败允许用户buffer已有合法前缀，不将内核结果未消费误说成用户buffer必然完全未写。
+3. 第三题中活孩子转交A正确，DEAD孩子也必须转交，不能跟B一起销毁。A在本题是指定收养者。
+   C已DEAD意味着其用户空间通常已释放，但退出记录和Task槽仍有待收集；只改C.parent=A，状态及结果不变。
+   B自己的parent=A、REQUESTED/FAULT结果同样保留，随后A分别WAITPID/reap B和C。
+   转交发生在B退出时，因为B已经不能继续履行收集责任，A应立即成为合法收集者。
+   B被reap后其槽和记录会清空，不能依赖后续还存在B对象来补救关系；这不是说扫描算法绝对无法用保存的旧ID找到C，
+   而是退出路径就应完成责任移交，使B回收与孩子后续生命周期相互独立。
+
+本批按既定方式集中澄清并归档，不追加新题、重答或新的测试门槛。收尾时原计划下一批多内置ELF；
+作者随后提出现在开始拆sched，最新顺序与完整任务见[BATCH16：提取固定任务表](BATCH16_TASK_TABLE.md)。
 
 ## 准备证据与限制
 

@@ -7,6 +7,7 @@
 #include "mm/user_access.h"
 #include "task/timer.h"
 #include "process/spawn.h"
+#include "task/builtin_program.h"
 
 static uint64_t syscall_write(
     uintptr_t source_address,
@@ -195,8 +196,16 @@ struct trap_frame* syscall_handle(
         break;
     }
     case SYSCALL_SPAWN: {
-        uintptr_t user_argument = (uintptr_t)frame->a0;
-        int new_id = process_spawn_builtin(user_argument);
+        // 旧 SPAWN 分支
+        const uintptr_t argument = (uintptr_t)frame->a0;
+        const int new_id = process_spawn_builtin(USER_PROGRAM_DEMO, argument);
+        frame->a0 = (uint64_t)(long)new_id;
+        break;
+    }
+    case SYSCALL_SPAWN_PROGRAM: {
+        uint64_t program_id = (uint64_t)frame->a0;
+        uintptr_t user_argument = (uintptr_t)frame->a1;
+        int new_id = process_spawn_builtin(program_id, user_argument);
         frame->a0 = (uint64_t)(long)new_id;
         break;
     }
@@ -206,8 +215,17 @@ struct trap_frame* syscall_handle(
         break;
     }
     case SYSCALL_EXEC: {
-        const uintptr_t user_argument = (uintptr_t)frame->a0;
-        if (sched_exec_current(frame, user_argument) != 0) {
+        // 旧 EXEC 分支
+        const uintptr_t argument = (uintptr_t)frame->a0;
+        if (sched_exec_current(frame, USER_PROGRAM_DEMO, argument) != 0) {
+            frame->a0 = (uint64_t)(long)-1;
+        }
+        break;
+    }
+    case SYSCALL_EXEC_PROGRAM: {
+        const uint64_t program_id = (uint64_t)frame->a0;
+        const uintptr_t user_argument = (uintptr_t)frame->a1;
+        if (sched_exec_current(frame, program_id, user_argument) != 0) {
             frame->a0 = (uint64_t)(long)-1;
         }
         break;

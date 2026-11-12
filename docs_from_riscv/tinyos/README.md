@@ -1,6 +1,6 @@
 # TinyOS 改造批次索引
 
-更新：2026-11-09。这里的编号只用于 TinyOS 改造线，独立于 [rCore 学习批次](../../experiments/rcore-learning/README.md)。
+更新：2026-11-12。这里的编号只用于 TinyOS 改造线，独立于 [rCore 学习批次](../../experiments/rcore-learning/README.md)。
 
 每个完整批次只使用一份文档，在其中持续维护任务、接口、修改记录、验证和问答。总路线见 [TINYOS_EVOLUTION.md](../TINYOS_EVOLUTION.md)。
 
@@ -22,13 +22,31 @@
 | [BATCH12](BATCH12_BUILTIN_SPAWN.md) | 2026-11-07 | 运行期创建内置镜像任务，功能/P0及三题归档完成 |
 | [BATCH13](BATCH13_EAGER_FORK.md) | 2026-11-08 | 立即复制用户空间与现场的FORK，功能/P0及三题归档完成 |
 | [BATCH14](BATCH14_BUILTIN_EXEC.md) | 2026-11-09 | 同任务替换内置镜像的EXEC，功能/P0及三题归档完成 |
+| [BATCH15](BATCH15_PARENT_AND_WAIT.md) | 2026-11-09—11 | 父子关系、限父等待与固定根孤儿收养，功能/P0及三题归档完成 |
+| [BATCH16](BATCH16_TASK_TABLE.md) | 2026-11-11 | 固定任务表提取，功能/P0/500轮压力及三题归档完成 |
+| [BATCH17](BATCH17_USER_TASK_OPERATIONS.md) | 2026-11-11 | 用户任务创建/替换/退出事务分离，功能/P0及三题归档完成 |
+| [BATCH18](BATCH18_BUILTIN_PROGRAMS.md) | 2026-11-11—12 | 两份内置ELF选择，功能/P0及三题归档完成 |
 
-最近完整归档 **BATCH14**，功能、P0和三题原答/集中审查/修正版均完成；当前为BATCH15任务。
+最近完整归档 **BATCH18**，功能/P0和三题原答/集中审查/修正版均完成；当前 **BATCH19** 文件系统第一批完整任务已交付，等待作者实现。
 
 ## 当前批次与近期归档
 
-[BATCH15：父子关系、等待收集与孤儿收养](BATCH15_PARENT_AND_WAIT.md)——完整任务已交付，待作者实现。
-Process父ID、U1收养者、五槽、限父REAP与WAITPID11、活/DEAD孤儿转交；接口与一页用户预算准备通过，未实现新内核功能。全部P0协作者承担，阶段完成后再拆sched。
+[BATCH19：只读内置文件与按偏移读取](BATCH19_BUILTIN_FILE_SYSTEM.md)——完整目标/接口/所有权/boot接线/固定P0/三题已交付，尚未实现。
+新增只读文件表与read_at，按完整名字查找/bin/demo、/bin/worker和普通文本/etc/about，boot从文件取得原ELF配置字节。
+接口在RV64/native C++20临时语法检查通过，未运行本批功能；下一步先写BuiltinFile::read_at，再初始化/查找及启动接线。
+
+[BATCH18：选择不同的内置ELF](BATCH18_BUILTIN_PROGRAMS.md)——功能/全部既定P0及三题原答/集中澄清/修正版均归档，本批收尾。
+固定DEMO0、WORKER1，新12/13分离程序编号与入口参数，旧8/10保持默认镜像；镜像表独立拥有一次配置，SPAWN/EXEC复用原生命周期。
+完整/增量构建及嵌入字节、registry13项、真实编号0参数0、正常35页资源链、指定WORKER的EXEC OOM/实际继续重试、原宿主/500轮压力均通过；正式RX3962/929，详细证据与限制见当批第12节。
+
+[BATCH17：分离用户任务操作](BATCH17_USER_TASK_OPERATIONS.md)——功能/全部P0与原三题原答/集中审查/修正版均归档，本批收尾。
+作者完成迁移后协作者按授权拆为create/exec/exit三个实现，统一无状态接口显式接收依赖；scheduler保留当前校验和重调度。正常资源链、500轮压力、活孤儿与EXEC准备失败/真实重试均通过，详细证据见当批文档。
+
+[BATCH16：提取固定任务表](BATCH16_TASK_TABLE.md)——功能/P0、追加500轮压力与三题原答/集中审查/修正版均已归档，本批收尾。
+Task/同槽Process固定存储、ID/高水位与分配/查找/安全复用归TaskTable；current/idle/root/reaper与调度/用户事务暂留sched。宿主2500记录与QEMU2000子进程压力、原双S演示/35页回收、五槽孤儿及ID耗尽边界均通过；证据和限制集中在本批。
+
+[BATCH15：父子关系、等待收集与孤儿收养](BATCH15_PARENT_AND_WAIT.md)——功能、全部既定P0及三题原答/集中审查/修正版归档完成，本批收尾。
+Process父ID、U1收养者、五槽、限父REAP与WAITPID11、活/DEAD孤儿转交均已实现；真实非父拒绝/坏地址重试、五份空间35页释放及零PMM收集验证通过。功能提交d3ba173，收尾证据在当批文档；整体跨文件拆分仍在进程管理阶段完成后。
 
 [BATCH12：用户请求创建内置镜像任务](BATCH12_BUILTIN_SPAWN.md)——功能、全部既定P0、执行路径梳理和原三题原答/集中审查已归档，本批收尾。覆盖SPAWN/fresh U2/退出23/收集、失败回滚与重试、现场/隔离/回收和8KiB栈观测；保持固定槽/单hart，不做fork/exec/VFS。
 

@@ -1,5 +1,50 @@
 # 宿主测试
 
+## TaskTable循环压力与测试工厂
+
+```sh
+make test
+make test-stress
+# 调整真实QEMU循环数（宿主记录层固定500轮）：
+make test-stress TASK_STRESS_ROUNDS=1000
+```
+
+`make test`现包含`test_task_table.cpp`：测试专用`TaskFactory`每轮创建5个空用户空间的
+Task/Process记录，满槽拒绝、终止、回收后再创建，500轮累计2500个新ID。
+检查最小空槽复用、旧ID失效、高水位保持、对象/内核栈地址稳定、结果与父关系清空，以及零PMM调用。
+`host_task_context.cpp`仅模拟现场布局；这不是用户代码执行或RISC-V硬件验证。
+
+`make test-stress`先执行宿主测试，再运行`verify_task_table_stress.py`，默认真实QEMU500轮。
+测试在`.cache/task-table-stress/`新建隔离源码副本，保留原-O0和一页用户代码断言，
+只在副本中省略两S演示，使用1个固定USER收养者加4个真实工作进程占满5槽。
+收养者每轮通过测试工厂创建一批、等待所有结果、reap，再开始下一批；最后自己退出。
+这是当前创建权限允许的连续运行方式，不新增内核任务回收或收养者重启规则。
+
+用户层测试工厂位于`test/user_stress/task_factory.{h,c}`，只调用真实用户接口：
+偶数轮4次SPAWN，奇数轮4次FORK；每4轮包含一次EXEC替换与一次预期load fault13。
+每轮还尝试一次槽满SPAWN并验证失败，检查实际返回ID连续、父子数据/栈隔离、结果正确及旧ID不能重收。
+fork子分支直接执行工作函数并退出，不再次进入父的循环。
+
+副本中的`observer.inc`借用既有PUTCHAR检查点，只读观察任务表，并包装实际PMM调用：
+每轮检查4个槽全部UNUSED、父/结果清空、Task/Process地址稳定、页面余额回到基线；
+新分配PA登记、free必须对应一个仍活跃的PA，检测重复释放或遗漏。
+默认500轮为2000个子进程、1000次SPAWN、1000次FORK、125次EXEC、125次FAULT、500次满槽拒绝；
+运行期分配/回收18375页次，最后根再释放7页，最终free18382页次。
+检查的是周转页次数，非同时占有18375个物理页。
+
+可直接运行：
+
+```sh
+python3 test/verify_task_table_stress.py --rounds 500 --timeout 120
+```
+
+每次保存隔离源码、构建/布局/QEMU日志、源哈希及results.json；同名输出目录拒绝覆盖。
+出现FAIL、超时、构建问题或断言不符会失败；完成根退出并观察两次S-mode idle timer后外部停止QEMU。
+原正常用户演示与产品策略均不被脚本修改；压力测试不自动代替所有批次P0或多hart验证。
+
+多内置ELF接入后，副本仍保留DEMO/WORKER两镜像构建与统一registry配置，只替换DEMO为压力程序。
+压力负载继续通过旧SPAWN8/EXEC10默认选择DEMO，因而同时回归旧ABI；WORKER的新选择路径由正常演示及当批专项验证。
+
 本批用户内存回收与失败回滚的范围和验收条件见
 [USER_MEMORY_REQUIREMENTS.md](USER_MEMORY_REQUIREMENTS.md)。H1-H8 宿主用例与 Q1/Q2 的 QEMU 回归均已实现。
 

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "mm/vm.h"
-#include "user/user_elf.h"
+
 
 /* Demo user address layout; private to the boot stages. */
 #define DEMO_USER_CODE_ADDRESS \
@@ -41,15 +41,13 @@ void task_b(void);
 
 /* Boot stages, in the order kernel_main runs them. */
 void boot_console(unsigned long hart_id, const void *device_tree);
-void boot_load_user_elf(UserElfLayout *layout, size_t *elf_size);
+
 void boot_init_pmm(const void *device_tree);
 Sv39PageTable *boot_init_kernel_vm(const void *device_tree);
 uint64_t boot_enable_paging(Sv39PageTable *kernel_root);
 void boot_start_user(
     Sv39PageTable *kernel_root,
-    uint64_t satp_value,
-    size_t elf_size,
-    const UserElfLayout *layout);
+    uint64_t satp_value);
 void boot_start_scheduler(void);
 
 #ifdef __cplusplus

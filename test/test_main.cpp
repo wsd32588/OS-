@@ -10,6 +10,7 @@
 
 int test_user_page_collection();
 int test_user_address_space();
+int test_task_table();
 
 int main(void) {
     if (test_pmm() != 0) {
@@ -41,6 +42,10 @@ int main(void) {
     }
 
     if (test_user_data() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_task_table() != 0) {
         return EXIT_FAILURE;
     }
 

@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-int process_spawn_builtin(uintptr_t user_argument);
+int process_spawn_builtin(uint64_t program_id, uintptr_t user_argument);
 
 #ifdef __cplusplus
 }
