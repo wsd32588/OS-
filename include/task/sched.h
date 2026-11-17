@@ -50,6 +50,15 @@ int task_create_user(
     uintptr_t user_argument
 );
 
+long sched_open_file(struct trap_frame* frame,
+                     uintptr_t path_address, uint64_t path_length);
+long sched_read_file(struct trap_frame* frame, long requested_fd,
+                     uintptr_t destination_address, uint64_t length);
+long sched_close_file(struct trap_frame* frame, long requested_fd);
+long sched_write_file(
+    struct trap_frame* frame, long requested_fd,
+    uintptr_t source_address, uint64_t length
+);
 const Sv39PageTable* sched_current_user_root(void);
 
 #ifdef __cplusplus

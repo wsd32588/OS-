@@ -51,11 +51,13 @@ struct trap_frame* trap_handler(struct trap_frame* frame) {
         code == IRQ_S_TIMER) {
         timer_set_next();
 
+#if TINYOS_KERNEL_TRACE
         if ((frame->sstatus & SSTATUS_SPP) == 0) {
             uart_puts("[timer] tick in U-mode\n");
         } else {
             uart_puts("[timer] tick in S-mode\n");
         }
+#endif
 
         return sched_on_timer(frame);
     }

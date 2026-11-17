@@ -4,6 +4,9 @@
 Fill SCENARIOS with user C sources and expected observations. The production
 kernel is copied, never rewritten. Existing WRITE helpers handle build and
 bounded QEMU execution, including termination on timeout.
+
+The release probe still targets the historical five-page UserMemory API;
+updating its task-A observation does not migrate that API to the current kernel.
 """
 
 from pathlib import Path
@@ -15,6 +18,7 @@ from verify_syscall_write import build, copy_project, run_qemu
 
 
 RELEASE_PASS = b"[data probe] PASS five pages restored; descriptor empty; root preserved"
+A_POLL_PASS = b"[data probe] task A polled UART after release"
 FAULT_MARKER = b"[user fault]"
 
 # This wrapper checks the actual release used by both EXIT and user faults.
@@ -28,9 +32,22 @@ RELEASE_PROBE = r'''
 
 static Sv39PageTable *g_data_probe_root;
 static unsigned int g_data_probe_root_free_attempts;
+static int g_data_probe_release_succeeded;
+static int g_data_probe_a_poll_reported;
 
 int __real_pmm_free_page(void *page);
 int __real_user_memory_release(UserMemory *memory);
+int __real_uart_try_getchar(void);
+
+/* task_a is the sole RX consumer; preserve the real driver's result. */
+int __wrap_uart_try_getchar(void) {
+    const int result = __real_uart_try_getchar();
+    if (g_data_probe_release_succeeded && !g_data_probe_a_poll_reported) {
+        g_data_probe_a_poll_reported = 1;
+        uart_puts("[data probe] task A polled UART after release\n");
+    }
+    return result;
+}
 
 static void data_probe_fail(const char *message) {
     uart_puts("[data probe] FAIL ");
@@ -112,6 +129,7 @@ int __wrap_user_memory_release(UserMemory *memory) {
     }
     g_data_probe_root = NULL;
     uart_puts("[data probe] PASS five pages restored; descriptor empty; root preserved\n");
+    g_data_probe_release_succeeded = 1;
     return result;
 }
 '''
@@ -255,7 +273,8 @@ def check_output(output: bytes, scenario: dict) -> None:
     if output.count(RELEASE_PASS) != 1 or RELEASE_PASS not in output.partition(finish_marker)[2]:
         raise ValueError("missing or misplaced five-page release check")
     after_release = output.partition(RELEASE_PASS)[2]
-    if after_release.count(b"[timer] tick in S-mode") < 2 or b"AA" not in after_release:
+    if (after_release.count(b"[timer] tick in S-mode") < 2 or
+            output.count(A_POLL_PASS) != 1 or A_POLL_PASS not in after_release):
         raise ValueError("A/timer did not continue after release")
     if b"[timer] tick in U-mode" in after_release:
         raise ValueError("terminated user task ran again")
@@ -275,6 +294,7 @@ def run_scenario(workspace: Path, scenario: dict) -> None:
     if source.count(anchor) != 1:
         raise ValueError("cannot find unique kernel link command")
     source = source.replace(anchor, "$(LD) --wrap=user_memory_release --wrap=pmm_free_page "
+                            "--wrap=uart_try_getchar "
                             "-T linker.ld $(OBJS) -o $@", 1)
     makefile.write_text(source)
     build(workspace)

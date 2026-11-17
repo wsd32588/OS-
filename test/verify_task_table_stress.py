@@ -68,16 +68,15 @@ def main():
     with (work / 'Makefile').open('a') as stream:
         stream.write(f'\nUSER_CFLAGS += -DTEST_STRESS_ROUNDS={args.rounds}\n'
                      f'CXXFLAGS += -DTEST_STRESS_ROUNDS={args.rounds}\n')
-    # Use all five table slots for USERs. The normal two S demos stay untouched.
-    boot = work / 'kernel/boot/private/boot_stages.cpp'
-    text = boot.read_text()
-    start = text.index('    const int task_a_id = task_create(task_a);')
-    end = text.index('    if (tinyos::configure_builtin_programs(', start)
-    boot.write_text(text[:start] + text[end:])
+    # Test-owned bootstrap leaves all five slots available for USERs; the
+    # production boot and its console task are copied without text surgery.
+    shutil.copyfile(payload / 'boot_tasks.cpp',
+                    work / 'kernel/boot/private/boot_tasks.cpp')
     with (work / 'kernel/task/sched.cpp').open('a') as stream:
         stream.write('\n' + (payload / 'observer.inc').read_text())
     print(f'Stress evidence: {output}', flush=True)
-    build = subprocess.run(['make', '-j4'], cwd=work, capture_output=True, text=True, timeout=120)
+    build = subprocess.run(['make', '-j4', 'KERNEL_TRACE=1', 'CONSOLE_MODE=kdbg'], cwd=work,
+                           capture_output=True, text=True, timeout=120)
     build_text = build.stdout + build.stderr
     (output / 'build.log').write_text(build_text)
     if build.returncode:

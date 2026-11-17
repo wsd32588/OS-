@@ -3,7 +3,9 @@
 
 #include "mm/user_address_space.h"
 #include "task/task_exit_info.h"
+#include "fs/file_descriptor_table.hpp"
 
+#include <span>
 namespace tinyos {
 
 inline constexpr int kNoParentId = -1;
@@ -23,7 +25,7 @@ public:
     const Sv39PageTable* root() const noexcept;
 
     void record_exit(TaskExitInfo res) noexcept;
-    int release_resources();
+    int release_address_space();
     const TaskExitInfo& exit_info() const noexcept;
     int clone_address_space(UserAddressSpace& output) const;
     int parent_id() const noexcept;
@@ -32,7 +34,17 @@ public:
     bool resources_empty() const noexcept;
     int reset();
 
+    int open_file(std::span<const char> path) noexcept;
+    fs::OpenFile* find_open_file(int fd) noexcept;
+    const fs::OpenFile* find_open_file(int fd) const noexcept;
+    int close_file(int fd) noexcept;
+    void close_files() noexcept;
+    int clone_file_descriptors(fs::FileDescriptorTable& output) const noexcept;
+    void adopt_file_descriptors(fs::FileDescriptorTable& source) noexcept;
+    bool files_empty() const noexcept;
+
 private:
+    fs::FileDescriptorTable files_{};
     UserAddressSpace user_space_{};
     TaskExitInfo exit_info_{};
     int parent_id_{kNoParentId};

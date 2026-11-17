@@ -38,7 +38,9 @@ int identity_mapping_is_present(
 
 void task_a(void);
 void task_b(void);
+int boot_create_tasks(const Sv39PageTable* kernel_root);
 
+int boot_configure_console(void);
 /* Boot stages, in the order kernel_main runs them. */
 void boot_console(unsigned long hart_id, const void *device_tree);
 

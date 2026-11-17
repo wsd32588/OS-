@@ -8,6 +8,7 @@
 #include "drivers/uart.h"
 #include "task/private/task_table.hpp"
 #include "task/private/user_task.hpp"
+#include "fs/file_syscall.hpp"
 
 namespace {
 constinit tinyos::TaskTable g_task_table{};
@@ -31,7 +32,9 @@ extern "C" void task_enter(
 );
 
 static void idle_entry(void) {
+#if TINYOS_KERNEL_TRACE
     uart_puts("[idle] entered\n");
+#endif
 
     for (;;) {
         asm volatile("wfi");
@@ -144,7 +147,9 @@ static void task_trampoline(void)
 
     entry();
 
+#if TINYOS_KERNEL_TRACE
     uart_puts("\n[task] entry returned\n");
+#endif
 
     task_exit();
 }
@@ -600,6 +605,66 @@ struct trap_frame* sched_on_sleep(
 const Sv39PageTable* sched_current_user_root(void) {
     const struct task* current = current_user_task_metadata();
     return current == nullptr ? nullptr : current->proc->root();
+}
+
+long sched_open_file(
+    struct trap_frame* frame,
+    uintptr_t path_address, uint64_t path_length
+) {
+    task* current = current_user_task(frame);
+    if (current == nullptr || !supervisor_interrupts_disabled()) {
+        return -1;
+    }
+    return tinyos::fs::syscall_open_file(
+        *current->proc,
+        path_address,
+        path_length);
+}
+long sched_read_file(
+    struct trap_frame* frame,
+    long requested_fd,
+    uintptr_t destination_address,
+    uint64_t length
+) {
+    task* current = current_user_task(frame);
+    if (current == nullptr || !supervisor_interrupts_disabled()) {
+        return -1;
+    }
+
+    return tinyos::fs::syscall_read(
+        *current->proc,
+        requested_fd,
+        destination_address,
+        length);
+}
+long sched_write_file(
+    struct trap_frame* frame, long requested_fd,
+    uintptr_t source_address, uint64_t length
+) {
+    const task* current = current_user_task(frame);
+    if (current == nullptr || !supervisor_interrupts_disabled()) {
+        return -1;
+    }
+
+    return tinyos::fs::syscall_write_fd(
+        *current->proc,
+        requested_fd,
+        source_address,
+        length);
+}
+
+long sched_close_file(
+    struct trap_frame* frame,
+    long requested_fd
+) {
+    task* current = current_user_task(frame);
+    if (current == nullptr || !supervisor_interrupts_disabled()) {
+        return -1;
+    }
+
+    return tinyos::fs::syscall_close(
+        *current->proc,
+        requested_fd);
 }
 
 int scheduler_start(void) {

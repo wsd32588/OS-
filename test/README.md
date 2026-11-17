@@ -1,5 +1,29 @@
 # 宿主测试
 
+## 打开文件对象与FD表模型
+
+`test_open_file.cpp`链接真实FS、OpenFile/Pool和FDTable，验证独立打开与共享继承（含fd空洞）、
+准备读取/提交实际count、EOF/空文件、关闭最后引用、8个fd及40池对象满额拒绝/重试、adopt与状态保持。
+类型禁止复制移动，模型操作检查零PMM；retain引用溢出仅审查正式实现，不改私有字段伪造溢出。
+宿主采用正式`runtime/panic.h`，不变量失败的C桩直接abort，不通过noexcept抛异常；这不替代目标panic/QEMU验证。
+
+`test_file_syscall.cpp`先绑定一个长期static提供者，`test_process_files.cpp`复用同一真实文件服务：
+验证Process文件引用阻止reset、失败元数据保持、clone/adopt及候选撤销、仅释放地址空间不关FD、
+显式关闭后reset，以及真实拥有/映射页面上的typed OPEN/READ/CLOSE和拷出失败后位置不变。
+服务池保持私有，没有测试reset/getpool钩子；复杂U-mode生命周期与跨页失败仍由独立QEMU验证。
+
+## 只读内置文件表
+
+`make test`通过真实`kernel/fs/builtin_fs.cpp`运行`test_builtin_fs.cpp`：初始化全预检与重试、
+重复路径/重复初始化、描述值复制和借用指针、完整路径/组件与127/128字节边界、空文件、
+二进制/分段/短读哨兵及EOF/SIZE_MAX/空目标读取。原始名字和字节保持有效，测试不伪造超大span。
+这部分是纯算法宿主验证；boot从文件查找结果取得ELF、原用户生命周期与页面计数由QEMU验证。
+
+`test_file_syscall.cpp`再链接真实`file_syscall.cpp`、文件表、usercopy与页表：验证绑定前拒绝、
+未初始化绑定失败后的正确重试、重复绑定保持原提供者、7+11分段读取，以及短读只复制实际count、
+EOF/极端offset/零length不访问目标；检查读取零PMM及映射/路径保持。测试提供者及底层字节为静态长期存储，
+不新增生产reset接口。它直接调用C桥接，不替代真实U-mode寄存器分发和跨页错误的QEMU验证。
+
 ## TaskTable循环压力与测试工厂
 
 ```sh
@@ -164,3 +188,66 @@ WRITE 脚本尚未加入 make test-qemu，完整回归需要另行执行上述�
 user/main.c 独立链接的镜像，经 objcopy 和 kernel/user/user_entry.S 的 incbin 嵌入内核。
 三个 QEMU 脚本均复制 user 源码并忽略 build，临时工程从源码重建镜像。
 2026-10-07 完整 12 个 WRITE 场景与宿主回归通过；旧 Q1/Q2 由作者报告通过。
+
+## 进程与文件描述符隔离回归
+
+完整进程/FD回归负载保存在 `test/process_regression/main.c` 与 `worker.c`，
+从原生产用户程序按字节迁入。正常启动只保留控制台任务；回归可单独运行：
+
+```sh
+make test-process
+# 或指定证据位置：
+python3 test/verify_process_regression.py --output-dir .cache/my-process-regression
+```
+
+脚本复制当前产品源码，在隔离副本换入保存的两个用户程序和 `boot_tasks.cpp`
+测试工厂，创建原两个内核任务、两个用户任务及收养关系，再使用 `KERNEL_TRACE=1`
+构建并运行真实QEMU。保留fork快照/隔离、spawn、exec、旧READ_FILE与FD读日志和
+退出0/23/37/0检查；观察器验证五次镜像各释放七个唯一物理页、35次free、运行期
+21次分配、净恢复14页、三次reap零PMM、文件调用零PMM、最终池空和后续两次S tick。
+默认每次在`.cache/process-regression/`新建独立目录；输出目录保存构建/串口日志、前后正式源码SHA256与结果，脚本不修改正式产品或
+复用`.cache`里的实现。看到最终账本标记后由宿主停止QEMU；限时结束本身不算通过。
+本入口不迁移历史五页脚本，也不追加压力、边界或OOM矩阵。
+
+正常`make qemu`默认`KERNEL_TRACE=0`，只启动控制台任务，不自动执行上述负载。
+测试在隔离副本使用`KERNEL_TRACE=1`保留过程日志，实际定时中断/调度与错误诊断始终存在。
+生成的`build/kernel_config.h`使trace值变化时自动重编内核对象，无需清理构建。
+压力测试同样换入自己的`test/user_stress/boot_tasks.cpp`，不再按生产boot文本位置剪掉任务。
+
+B24 的 `test_kernel_console.cpp` 链接真实 `console.cpp`/`file_view.cpp`，在已有
+文件服务永久绑定后复用 `/etc/about` 与 `/empty`，不新增配置重置接口。
+六组用例检查cat二进制65字节按64+1同步输出、空文件、hex精确格式/64字节预览，
+以及命令与错误、CR/LF/CRLF、BS/DEL、160/161字符边界和非法字节整行拒绝后恢复。
+输出回调使用固定缓冲同步复制字节与记录块长，回调中不抛异常；断言在返回后执行。
+每组核对文件描述/源数据和PMM计数保持。UART寄存器、真实定时抢占与终端输入
+仍由独立QEMU验证，不由这些宿主用例代替。
+
+B25 的 `test_input_queue.cpp` 链接真实 `kernel/console/input_queue.cpp`。
+五组确定性用例检查空/0/255、256字节满容量与拒绝保持、跨数组末尾FIFO、部分提交、
+重复查看/放弃交付后重试、超量提交拒绝和目标护栏/未用尾部保持；每组核对零PMM操作。
+“放弃交付”只验证不commit可保留输入，不宣称已经接入用户stdin或验证真实用户拷出失败。
+当前队列由task_a独占，真实UART经队列到console的接线仍由QEMU验证。
+
+B26 的 `test_console_device.cpp` 链接真实 `console_device.cpp`/`console_service.cpp`。
+五组用例检查未配置拒绝、配置预检与空context、重复配置保留回调/待输入、每次最多接收一个字节、
+满256时不读硬件、消费后恢复接收与回绕、peek/提交拒绝重试及同步二进制输出。
+有限输入/输出假回调使用固定存储且noexcept，断言在回调返回后执行；每组核对零PMM操作。
+服务专用用例使用长期context，仅成功配置一次，不添加测试重绑或暴露私有设备。
+设备内部暂空返回0，不代表用户EOF；本批不接用户FD或stdin。真实服务/UART与kdbg路径继续由QEMU验证。
+
+B27 的 `console_fd/main.cpp` 增加独立 `tinyos_console_fd_tests`，CTest分别以kdbg/user参数启动两个进程。
+每个进程的文件服务和控制台服务各绑定一次，沿用真实对象/池/FD/Process/页表和syscall算法，
+不添加生产reset或全局getter，也不改变原120组用例的配置顺序。
+两模式各四组，user另两组，共十组：配置失败保持/模式互斥、混合池与满表/槽复用、
+独立打开和继承引用共享永久输入流、精确路径及普通只读文件保持、暂空/零长/复制失败重试、
+写入实际长度/二进制与完整复制失败零输出。合法源/目标使用真实用户页映射，操作前后核对零PMM，
+fixture结束恢复全部物理页。真实U态SIE状态、寄存器ABI和UART交付继续由隔离QEMU验证。
+
+B28继续扩展同一`console_fd/main.cpp`，沿用每个进程各绑定一次的服务fixture。
+两模式各新增三组，user另加一组，共七组：标准0/1/2的独立对象与R/W/W权限、
+None及关闭后能力清空、原无参consoleopen保持RW、两个可用池槽时第三项准备失败的完整撤销与重试、
+非空目标拒绝、继承空洞/共享引用与adopt移交、独立fresh表、关闭标准号码后普通文件复用、
+最后关闭仍保留设备输入，以及标准syscall的方向检查先于零长成功/poll/复制。
+stdout/stderr分别检查实际二进制长度，所有新增文件操作核对零PMM，真实映射fixture最终完整回收。
+服务未ready及kdbg准备拒绝在原配置用例内检查，不增加reset或公开私有池。
+实际boot/SPAWN创建、fork/exec与退出的标准FD关系由独立QEMU验证，宿主表测试不替代该执行路径。

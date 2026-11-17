@@ -91,7 +91,7 @@ int exec(task& current, trap_frame& frame, const Sv39PageTable* kernel_root, uin
         exec_commit_fail("exec: activate kernel root failed\n");
     }
 
-    result = current.proc->release_resources();
+    result = current.proc->release_address_space();
     if (result != SV39_OK) {
         exec_commit_fail("exec: release old space failed\n");
     }

@@ -9,9 +9,19 @@
 新builtin_program模块拥有只读镜像配置与候选准备，spawn仅组织准备/发布，user_task::exec保持替换事务；
 scheduler不公开全局依赖，Task/Process不增加程序编号或另一套身份。新12/13与旧8/10默认镜像兼容，细节只在当批维护。
 镜像配置/装载选择、正常资源链/准备失败重试和原500轮压力均已验证；当前进程管理阶段收尾。
-当前[BATCH19：只读内置文件](tinyos/BATCH19_BUILTIN_FILE_SYSTEM.md)完整任务已交付，尚未实现：文件表只管名字与只读字节/read_at，
+最近[BATCH19：只读内置文件](tinyos/BATCH19_BUILTIN_FILE_SYSTEM.md)功能、全部既定P0及三题归档完成：文件表只管名字与只读字节/read_at，
 boot从lookup结果配置现有ELF registry，原任务/进程及syscall生命周期保持；文件系统不操作用户页表或解析ELF。
+
+最近[BATCH20：用户按路径读取](tinyos/BATCH20_USER_FILE_READ.md)功能/全部P0及三题已收尾：独立文件syscall桥接显式接收用户root，
+借用boot私有长期FS，将用户路径复制/查找/暂存读取/实际数量拷出串起；本批不向Process添加FD或读取位置。
 文件表复制描述并永久借用底层名字/字节，返回记录指针依赖固定实例寿命；FD/打开位置及磁盘后端在后续独立批次处理。
+
+最近[BATCH21：内核打开文件模型](tinyos/BATCH21_OPEN_FILE_MODEL.md)功能/全部P0与三题已收尾：文件记录、池中一次打开、表中FD引用分层；
+本批只实现模型/boot演示，下一批Process拥有FD表并接生命周期。exec保留FD，因release_resources共用于exec/exit，不能在其中盲目关闭文件。
+
+最近[BATCH22：进程FD接口](tinyos/BATCH22_PROCESS_FILE_DESCRIPTORS.md)功能、全部既定P0及三题集中澄清归档已收尾：文件服务拥有私有系统池/FS配置，
+Process拥有私有表并封装自身生命周期，scheduler只检查当前USER与SIE后传Process&到文件syscall边界；不公开全局上下文或池getter。
+地址释放明确命名release_address_space且不关FD，统一退出另close_files；fork暂存引用在Task分配前完成，成功无失败移交。
 
 ## 当前拆解安排（2026-11-11）
 

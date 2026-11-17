@@ -16,6 +16,16 @@ get_filename_component(TINYOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLU
 
 # Select only kernel algorithms that can run without RISC-V instructions.
 add_library(tinyos_test_kernel STATIC
+    "${TINYOS_SOURCE_DIR}/kernel/console/console_device.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/console/console_service.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/console/input_queue.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/debug/console.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/debug/file_view.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/fs/builtin_fs.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/fs/file_syscall.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/fs/file_service.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/fs/open_file.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/fs/file_descriptor_table.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/pmm.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/vm.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_memory.cpp"
@@ -41,13 +51,19 @@ file(GLOB TINYOS_TEST_SOURCES CONFIGURE_DEPENDS LIST_DIRECTORIES false
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
 add_executable(tinyos_tests ${TINYOS_TEST_SOURCES})
+add_executable(tinyos_console_fd_tests console_fd/main.cpp host_support.cpp)
 set_target_properties(tinyos_tests PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
 )
+set_target_properties(tinyos_console_fd_tests PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+)
 
-foreach(target IN ITEMS tinyos_test_kernel tinyos_tests)
+foreach(target IN ITEMS tinyos_test_kernel tinyos_tests tinyos_console_fd_tests)
     # Ordinary -I would shadow the system <sched.h> required by the C++ library.
     target_compile_options(${target} PRIVATE
         -Wall -Wextra -Wpedantic
@@ -62,7 +78,17 @@ target_link_options(tinyos_tests PRIVATE
     "LINKER:--wrap=pmm_free_page"
     "LINKER:--wrap=pmm_alloc_page"
 )
+target_link_libraries(tinyos_console_fd_tests PRIVATE tinyos_test_kernel)
+target_link_options(tinyos_console_fd_tests PRIVATE
+    "LINKER:--wrap=sv39_unmap_page"
+    "LINKER:--wrap=pmm_free_page"
+    "LINKER:--wrap=pmm_alloc_page"
+)
 
-# PMM has global state: keep all cases in one sequential test process.
+# Keep PMM cases sequential within each executable. Console profiles use
+# separate processes so that service bindings remain one-time operations.
 add_test(NAME tinyos_host_tests COMMAND tinyos_tests)
 set_tests_properties(tinyos_host_tests PROPERTIES TIMEOUT 60)
+add_test(NAME tinyos_console_fd_kdbg COMMAND tinyos_console_fd_tests kdbg)
+add_test(NAME tinyos_console_fd_user COMMAND tinyos_console_fd_tests user)
+set_tests_properties(tinyos_console_fd_kdbg tinyos_console_fd_user PROPERTIES TIMEOUT 60)

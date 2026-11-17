@@ -49,7 +49,9 @@ void task_destroy(struct task* task, const Sv39PageTable* kernel_root) {
             asm volatile("wfi");
         }
     }
-    const int res = task->proc->release_resources();
+
+    task->proc->close_files();
+    const int res = task->proc->release_address_space();
 
     if (res != SV39_OK) {
         uart_puts("[user memory] release failed: ");
@@ -136,17 +138,20 @@ void finish(
     task_destroy(&current, kernel_root);
 
     if (current.proc->exit_info().reason == TASK_EXIT_REQUESTED) {
+#if TINYOS_KERNEL_TRACE
         uart_puts("[task] user exit id=");
         uart_put_hex((unsigned long)task_id);
         uart_puts(" status=");
         uart_put_hex((unsigned long)current.proc->exit_info().status);
+        uart_putchar('\n');
+#endif
     } else {
         uart_puts("[task] user fault id=");
         uart_put_hex((unsigned long)task_id);
         uart_puts(" scause=");
         uart_put_hex(current.proc->exit_info().fault_scause);
+        uart_putchar('\n');
     }
-    uart_putchar('\n');
 }
 
 } // namespace tinyos::user_task

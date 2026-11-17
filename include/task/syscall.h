@@ -1,6 +1,7 @@
 #ifndef TINYOS_SYSCALL_H
 #define TINYOS_SYSCALL_H
 
+#define SYSCALL_ERR_WOULD_BLOCK (-2)
 #define SYSCALL_PUTCHAR         1
 #define SYSCALL_YIELD           2
 #define SYSCALL_EXIT            3
@@ -14,7 +15,15 @@
 #define SYSCALL_WAITPID         11
 #define SYSCALL_SPAWN_PROGRAM   12
 #define SYSCALL_EXEC_PROGRAM    13
+#define SYSCALL_READ_FILE       14
+#define SYSCALL_OPEN            15
+#define SYSCALL_READ            16
+#define SYSCALL_CLOSE           17
+#define SYSCALL_WRITE_FD        18
+#define SYSCALL_EXEC_PATH       19
 #define SYSCALL_WRITE_MAX       256
+#define SYSCALL_READ_MAX        256
+#define SYSCALL_READ_FILE_MAX   SYSCALL_READ_MAX
 
 
 #ifndef __ASSEMBLER__

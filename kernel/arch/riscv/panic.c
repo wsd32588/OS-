@@ -1,5 +1,5 @@
 #include "drivers/uart.h"
-
+#include "runtime/panic.h"
 #include <stddef.h>
 
 __attribute__((noreturn))

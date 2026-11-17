@@ -81,4 +81,40 @@ user_exec_program:
     li a7, SYSCALL_EXEC_PROGRAM
     ecall
     ret
+
+.global user_read_file
+user_read_file:
+    li a7, SYSCALL_READ_FILE
+    ecall
+    ret
+
+.global user_open
+user_open:
+    li a7, SYSCALL_OPEN
+    ecall
+    ret
+
+.global user_read
+user_read:
+    li a7, SYSCALL_READ
+    ecall
+    ret
+
+.global user_close
+user_close:
+    li a7, SYSCALL_CLOSE
+    ecall
+    ret
+
+.global user_write_fd
+user_write_fd:
+    li a7, SYSCALL_WRITE_FD
+    ecall
+    ret
+
+.global user_exec_path
+user_exec_path:
+    li a7, SYSCALL_EXEC_PATH
+    ecall
+    ret
 .section .note.GNU-stack, "", @progbits

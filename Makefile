@@ -1,4 +1,5 @@
 CC = riscv64-linux-gnu-gcc
+.DEFAULT_GOAL := all
 CXX = clang++
 LD = riscv64-linux-gnu-ld
 OBJCOPY = riscv64-linux-gnu-objcopy
@@ -10,6 +11,23 @@ CTEST ?= ctest
 TEST_BUILD_DIR ?= test/build/cmake
 SYNC_DEST ?= /mnt/d/PROJECTS/C/tinyos
 OPTIMIZATION ?= -O0
+KERNEL_TRACE ?= 0
+CONSOLE_MODE ?= kdbg
+
+ifeq ($(CONSOLE_MODE),kdbg)
+CONSOLE_USER_IO := 0
+else ifeq ($(CONSOLE_MODE),user)
+CONSOLE_USER_IO := 1
+else
+$(error CONSOLE_MODE must be kdbg or user)
+endif
+
+KERNEL_CONFIG_HEADER = build/kernel_config.h
+ifneq ($(KERNEL_TRACE),0)
+ifneq ($(KERNEL_TRACE),1)
+$(error KERNEL_TRACE must be 0 or 1)
+endif
+endif
 TASK_STRESS_ROUNDS ?= 500
 
 ARCH_FLAGS = -march=rv64imac_zicsr_zifencei \
@@ -21,6 +39,7 @@ CFLAGS = -Wall -Wextra $(OPTIMIZATION) -g \
          -ffreestanding \
          -fno-stack-protector \
          -fno-pie \
+         -include $(KERNEL_CONFIG_HEADER) \
          -Iinclude \
          $(ARCH_FLAGS)
 
@@ -29,6 +48,7 @@ CXXFLAGS = --target=riscv64-unknown-elf \
            -ffreestanding \
            -fno-exceptions -fno-rtti -fno-threadsafe-statics \
            -fno-stack-protector -fno-pie \
+           -include $(KERNEL_CONFIG_HEADER) \
            -fno-unwind-tables -fno-asynchronous-unwind-tables \
            -Iinclude \
 		   -Ifreestanding \
@@ -58,6 +78,12 @@ OBJS = \
     kernel/boot/private/kernel_vm.o \
     kernel/boot/private/demo_tasks.o \
     kernel/boot/private/boot_stages.o \
+    kernel/boot/private/boot_tasks.o \
+	kernel/console/input_queue.o \
+	kernel/console/console_device.o \
+	kernel/console/console_service.o \
+	kernel/debug/console.o \
+    kernel/debug/file_view.o \
     kernel/mm/pmm.o \
 	kernel/mm/user_loader.o \
     kernel/arch/riscv/trap_entry.o \
@@ -65,6 +91,11 @@ OBJS = \
     kernel/task/trap.o \
     kernel/arch/riscv/sbi.o \
     kernel/arch/riscv/panic.o \
+	kernel/fs/builtin_fs.o \
+	kernel/fs/file_syscall.o \
+	kernel/fs/open_file.o \
+	kernel/fs/file_descriptor_table.o \
+	kernel/fs/file_service.o \
     kernel/task/timer.o \
     kernel/task/sched.o \
 	kernel/task/task.o \
@@ -90,9 +121,22 @@ OBJS = \
 
 DEPS = $(OBJS:.o=.d) $(USER_OBJS:.o=.d)
 
-.PHONY: all user clean compdb debug qemu sync sync-dry-run test test-qemu test-stress
+.PHONY: all user clean compdb debug qemu sync sync-dry-run test test-qemu test-stress test-process FORCE
 
 all: kernel.elf
+
+# Update the header only when its value changes, so switching trace modes also
+# rebuilds existing kernel objects without cleaning the workspace.
+$(KERNEL_CONFIG_HEADER): FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' \
+		'#define TINYOS_KERNEL_TRACE $(KERNEL_TRACE)' \
+		'#define TINYOS_CONSOLE_USER_IO $(CONSOLE_USER_IO)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
+
+FORCE:
+
+$(OBJS): $(KERNEL_CONFIG_HEADER)
 
 user: $(USER_BUILD_DIR)/demo.bin $(USER_BUILD_DIR)/worker.elf
 
@@ -161,6 +205,9 @@ test-qemu:
 
 test-stress: test
 	python3 test/verify_task_table_stress.py --rounds "$(TASK_STRESS_ROUNDS)"
+
+test-process:
+	python3 test/verify_process_regression.py
 
 compdb: test
 	bear -- $(MAKE) -B all

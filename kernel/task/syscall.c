@@ -8,6 +8,7 @@
 #include "task/timer.h"
 #include "process/spawn.h"
 #include "task/builtin_program.h"
+#include "fs/file_syscall.h"
 
 static uint64_t syscall_write(
     uintptr_t source_address,
@@ -160,18 +161,24 @@ struct trap_frame* syscall_handle(
 
     case SYSCALL_YIELD:
         frame->a0 = 0;
+#if TINYOS_KERNEL_TRACE
         uart_puts("[syscall] yield\n");
+#endif
         return sched_on_yield(frame);
 
     case SYSCALL_EXIT: {
         long status = (long)frame->a0;
+#if TINYOS_KERNEL_TRACE
         uart_puts("[syscall] exit\n");
+#endif
         return sched_on_exit(frame, status);
     }
     case SYSCALL_SLEEP:{
         uint64_t ticks = frame->a0;
         frame->a0 = 0;
+#if TINYOS_KERNEL_TRACE
         uart_puts("[syscall] sleep\n");
+#endif
         return sched_on_sleep(frame, ticks);
     }
     case SYSCALL_WRITE: {
@@ -236,6 +243,62 @@ struct trap_frame* syscall_handle(
         frame->a0 = (uint64_t)syscall_waitpid(
             requested_id, result_address);
         break;
+    }
+    case SYSCALL_READ_FILE: {
+        const uintptr_t path_address = (uintptr_t)frame->a0;
+        const uint64_t path_length = (uint64_t)frame->a1;
+        const uint64_t offset = (uint64_t)frame->a2;
+        const uintptr_t destination_address = (uintptr_t)frame->a3;
+        const uint64_t length = (uint64_t)frame->a4;
+
+        const Sv39PageTable* root = sched_current_user_root();
+
+        frame->a0 = (uint64_t)fs_syscall_read_file(
+            root,
+            path_address,
+            path_length,
+            offset,
+            destination_address,
+            length);
+        break;
+    }
+    case SYSCALL_OPEN: {
+         frame->a0 = (uint64_t)sched_open_file(
+            frame,
+            (uintptr_t)frame->a0,
+            (uint64_t)frame->a1);
+        break;
+    }
+
+    case SYSCALL_READ: {
+        frame->a0 = (uint64_t)sched_read_file(
+            frame,
+            (long)frame->a0,
+            (uintptr_t)frame->a1,
+            (uint64_t)frame->a2);
+        break;
+    }
+
+    case SYSCALL_CLOSE: {
+        frame->a0 = (uint64_t)sched_close_file(
+            frame,
+            (long)frame->a0);
+        break;
+    }
+    case SYSCALL_WRITE_FD: {
+        uint64_t fd = frame->a0;
+        uintptr_t source_address = frame->a1;
+        uint64_t length = frame->a2;
+
+        frame->a0 = sched_write_file(
+            frame,
+            fd,
+            source_address,
+            length);
+        break;
+    }
+    case SYSCALL_EXEC_PATH: {
+        
     }
     default:
         frame->a0 = (uint64_t)-1;

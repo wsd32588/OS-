@@ -11,6 +11,13 @@
 int test_user_page_collection();
 int test_user_address_space();
 int test_task_table();
+int test_builtin_fs();
+int test_file_syscall();
+int test_open_file();
+int test_process_files();
+int test_kernel_console();
+int test_input_queue();
+int test_console_device();
 
 int main(void) {
     if (test_pmm() != 0) {
@@ -46,6 +53,34 @@ int main(void) {
     }
 
     if (test_task_table() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_builtin_fs() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_file_syscall() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_open_file() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_process_files() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_kernel_console() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_input_queue() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_console_device() != 0) {
         return EXIT_FAILURE;
     }
 

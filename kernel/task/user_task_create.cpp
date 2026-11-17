@@ -2,12 +2,14 @@
 
 #include "arch/riscv/trap.h"
 #include "drivers/uart.h"
+#include "fs/file_service.hpp"
 #include "mm/address.hpp"
 #include "mm/user_address_space.h"
 #include "mm/user_memory.h"
 #include "process/process.hpp"
 #include "task/private/task.hpp"
 #include "task/private/task_table.hpp"
+#include "console/console_service.hpp"
 
 namespace tinyos::user_task {
 namespace {
@@ -17,7 +19,8 @@ int task_create_user_from_frame(
     TaskTable& table,
     const trap_frame& snapshot,
     UserAddressSpace& candidate,
-    int parent_id
+    int parent_id,
+    fs::FileDescriptorTable& pending_files
 ) {
     task* child = nullptr;
     const int task_id = table.allocate(&child);
@@ -30,7 +33,10 @@ int task_create_user_from_frame(
 
     const int slot_index = table.slot_of(child);
     child->proc = table.process_at(slot_index);
+
     child->proc->adopt(candidate);
+    child->proc->adopt_file_descriptors(pending_files);
+
     child->kind = TASK_KIND_USER;
     child->proc->set_parent_id(parent_id);
 
@@ -75,10 +81,19 @@ int create(
         return -1;
     }
 
+    fs::FileDescriptorTable pending_files{};
+
+    if (console::console_user_io_enabled()) {
+        if (fs::prepare_standard_streams(pending_files) != 0) {
+            return -1;
+        }
+    }
+
     struct task* task = nullptr;
     int task_id = table.allocate(&task);
 
     if (task_id < 0) {
+        fs::close_all_files(pending_files);
         return -1;
     }
 
@@ -97,6 +112,7 @@ int create(
     const int slot_index = table.slot_of(task);
     task->proc = table.process_at(slot_index);
     task->proc->adopt(source);
+    task->proc->adopt_file_descriptors(pending_files);
     source = {};
     task->kind = TASK_KIND_USER;
     task->proc->set_parent_id(parent_id);
@@ -139,11 +155,19 @@ int fork(TaskTable& table, task& parent, const trap_frame& frame) {
         return discard_fork_candidate(candidate);
     }
 
+    fs::FileDescriptorTable pending_files{};
+
+    if (parent.proc->clone_file_descriptors(pending_files) != 0) {
+        return discard_fork_candidate(candidate);
+    }
+
     asm volatile("fence.i" ::: "memory");
 
-    const int new_id = task_create_user_from_frame(table, snapshot, candidate, parent.task_id);
+    const int new_id = task_create_user_from_frame(
+        table, snapshot, candidate, parent.task_id, pending_files);
 
     if (new_id < 0) {
+        fs::close_all_files(pending_files);
         return discard_fork_candidate(candidate);
     }
     return new_id;

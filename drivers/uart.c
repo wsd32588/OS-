@@ -4,6 +4,8 @@
 #define UART_THR_OFFSET 0
 #define UART_LSR_OFFSET 5
 #define UART_LSR_THRE (1U << 5)
+#define UART_RBR_OFFSET 0
+#define UART_LSR_DR (1U << 0)
 
 void uart_putchar(char ch) {
     volatile unsigned char *uart =
@@ -31,4 +33,16 @@ void uart_put_hex(unsigned long value) {
         unsigned long digit = (value >> shift) & 0xf;
         uart_putchar(hex[digit]);
     }
+}
+
+
+int uart_try_getchar(void) {
+    volatile unsigned char* uart =
+        (volatile unsigned char*)UART0_BASE;
+
+    if ((uart[UART_LSR_OFFSET] & UART_LSR_DR) == 0) {
+        return -1;
+    }
+
+    return (int)uart[UART_RBR_OFFSET];
 }

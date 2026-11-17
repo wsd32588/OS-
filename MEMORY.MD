@@ -1,6 +1,385 @@
 # TinyOS 项目记忆
 
-最后更新：2026-11-13
+最后更新：2026-11-17
+
+## 本地Git检查点：B28完成，保留B29接口草稿（2026-11-17）
+
+作者明确要求“交一次git保存”，本次只本地提交，不推送。范围为当前86个工程源码/测试/批次文档与项目记忆，含demo_tasks.c→cpp及独立进程回归；明确排除未跟踪.auth_backup_20261113.json，未读取其内容，缓存/产物保持忽略。
+保存时作者仍在继续新增SYSCALL_EXEC_PATH19、用户声明/汇编及分发草稿，按暂存时快照原样保存为B29 WIP；不声称路径处理或B29功能实现。暂存后的后续编辑保持工作区，不覆盖或还原。
+本次make -j4与make test137具体用例/3CTest通过；日志.cache/git-checkpoint-20261117/，暂存快照验证另记同目录。原有行尾空格保持，未为提交格式化或改产品逻辑。最终本地提交与范围以git log和该目录记录为准；下一步继续B29既定完整任务。
+
+## B29路径EXEC完整任务已交付，待作者实现（2026-11-17）
+
+作者要求开始下一步，BATCH29_PATH_EXEC.md一次给齐接口/不变量/完整固定P0/三题；B28保持整批收尾。
+新EXEC_PATH19/user_exec_path(path,len,arg)，a0用户VA/a1显式1—127字节不含NUL/a2不透明参数，成功不回旧调用/保fresha0，失败-1旧ecall后继继续。scheduler仅当前USER/SPP0/SIE0薄壳，新增user_task::exec_path放现有exec实现，copy路径→FS lookup→find_builtin_program按永久记录身份映射旧0/1→复用原exec，输入模式不限制执行资格。
+BUiltinProgramImage保留现名，成员改const fs::BuiltinFile*，私有记录同指针+解析layout，configure两非空不同记录及非空bytes/两parse全通过后发布root；prepare从file->bytes取源。boot传已lookup的demo_file/worker_file永久成员，不能借局部files[]。未知/普通文件/同bytes异记录不自动可执行；旧编号ABI保持。
+main保留echo/q，39字节提示并新增e执行/bin/worker(argument0，不回显e)，worker改write_fd1输出原26字节后退出；不做shell/argv/路径SPAWN。助手负责原137host/两profile与旧35页回归、新registry有限纯逻辑/真实e与拒绝/一有限fork→路径exec保FD/一次候选第4申请NULL清前3页并旧程序继续重试，不扩旧矩阵或压力。准备失败候选在旧用户root可清且satp保持，成功提交才切kernel清旧空间，观察器不能混前提。
+独立只读设计审查及.cache/batch29-preparation-20261117/results.json的12项拟定头RV/native/C11/19号asm与C符号检查通过，108正式源配置保持；仅任务/索引/缓存，无产品实现/新功能运行验收/重复B28测试/提交推送。下一步作者先registry文件记录关联/find，再boot及path exec/ABI/main-worker整批接线。
+
+## B28功能、全部既定P0与三题归档完成，本批收尾（2026-11-17）
+
+B28第16节原样保留作者四段合并原答并集中澄清。每Process独立FD表，fresh三独立RWW OpenFile后端同Console；复用按当前对象access，不按数字，关闭不清长期输入。SPAWN不继承父引用/表而新三项；fork新逻辑Task/ID/独立复制用户页，FD表各自但对象ref+1共享含空洞；仅能复用已UNUSED槽非父活Task。exec保留同Task/Process/ID/内核栈及frame地址和FD，替换用户空间/用户栈/现场内容。
+第三项失败内层pending关前两引用，allocate失败create关外层三引用，source保持给boot/SPAWN创建调用者清理；候选不是父原空间或MMU所有。准备失败不排输出/输入队列，不走DEAD/reason退出；其他可失败准备在allocate前，allocate失败不消耗公开task_id，成功后无失败移交。
+协作者修正版明确不是作者重答，不要求重答/加题；.cache/batch28-final-20261117/summary.json的137host/3CTest、build33/user19/default36/lifecycle21/旧27回归P0保持，本轮仅文档索引，无产品修改/重复测试/提交推送。B28收尾，后续方向另行讨论，尚未交付下一批或代写；下方待答/待修为历史。
+
+## B28功能与全部既定P0通过，待原三题理解收尾（2026-11-17）
+
+作者修好OpenFile四项，create/main/service/权限接线当前无新阻塞。实际standard_stream.h/initialize_standard_stream单数一致，保留。B28第14—15节归档完整执行路径和验证；第11节原三题尚未回答，不标整批理解归档完成。
+统一.cache/batch28-final-20261117/summary.json全过，108正式源配置与build/两profile/生命周期/旧回归/当前树一致，助手未代改产品。build33项含15接口/两profile/nm过，root最终kdbg/trace0。host原130+新7=137具体用例/3CTest全过，助手仅扩console_fd/main.cpp及README；RWW/None/38池占用第三项失败撤销重试/空洞继承移交/号码复用/保留输入/真实映射方向拒绝与输出长度/零PMM齐。
+正式user19项：无OPEN/CLOSE，初始三不同RWW/ref1/池3，read0/write1，输出28/1/1/1/14，x/NUL/ff精确/q仅bye，11226次暂空配真实yield；整段SIE0/frame/root保持，EXIT0自动关三项，6唯一页kernelroot回收根最后/Process空/available+6/两idleS。默认36项五命令/55字节输入/PMM0池0/空poll安静保持。
+生命周期21项：fork1/exec1/SPAWN2，父0/1/3与hole2共享保持，新SPAWN独立RWW且3空；stderr E，六错方向含零长-1且poll/copy_to+from/UART增量0，29文件调用零PMM。独立静态未运行TaskTable满槽原create确实先准备+3再失败撤销，候选/局部表字节/生产全局元数据保持，同候选retry localID5成功，切kernel清6页返回caller根，fixture6alloc6free单独核账。含fixture6份各6页/36唯一free根最后，运行30alloc36free净恢复boot6，reap3/退出51,50,70,0/最终池0/root空/两idleS。
+make CONSOLE_MODE=user test-process内部kdbg/trace1，27项全过，旧退出0,23,37,0/35free21alloc净14/reap3零PMM池0，证据.cache/process-regression/20261117-220709-123/results.json。单进程小镜像6页与旧BSS7页分别核账。QMP命名管道只读，外部停止非客体关机；仅首user观察器Pool命名冲突和生命周期运行前活栈hash/initializer_list修fixture，无产品修补/压力矩阵扩张/提交推送。
+原三题随后已在第16节集中澄清归档，本节为功能/P0通过时的历史状态；既定P0已齐，不重复测试或追加题目。以下待修记录均为历史。
+
+## B28主体已接，OpenFile四项待修导致当前CTest失败（2026-11-17）
+
+作者已修create四处/TRACE误门槛/初始化RWW及return0/main错误到2，静态接线正确。实际单数standard_stream.h与initialize_standard_stream调用一致，接受命名，不作阻塞。
+当前仅集中发现open_file.cpp四项：can_read/write未拒None；commit_read误用can_write应can_read；write缺能力守卫；acquire_console未保存entry.access_=access。作者刚运行LastTest.log主host五处commit-1/预期0，两个console组commit失败后file_syscall.cpp:102内部panic；未重跑同一失败测试或QEMU。
+独立实际源码11项RV/native头/实现/main语法全过，所查11产品文件hash保持，证据.cache/batch28-review-20261117/interfaces/results.json，B28第13节集中归档。助手未改产品或宣称本批P0通过，下一步作者修四项后续原定验证；无追加矩阵/三题/提交推送。
+
+## B28标准流完整任务已交付，SPAWN全新资源已锁定（2026-11-17）
+
+作者明确SPAWN全新资源、不继承父FD。BATCH28_STANDARD_STREAMS.md一次给齐接口/事务/固定P0/三题，待作者实现；B27保持功能/P0/三题全部收尾。
+OpenFileAccess R/W/RW与能力查询，None能力false，Builtin只读，普通consoleopen默认RW兼容；标准0/1/2三独立Console对象各ref1、权限R/W/W，同一长期设备。号码可close/复用、不自动补回；权限先于read零长/poll及write用户复制，底层也守卫。
+FDTable initialize_standard_streams空目标→临时三次open→失败全关/成功adopt；service prepare_standard_streams私有池+ready/user门槛。fresh create原预检后allocate前按console_user_io_enabled准备，allocate失败关pending/source仍归caller，成功无失败移交。user boot/SPAWN新三项，fork继承含空洞/exec保留/exit关闭；kdbg与裸Process仍空，无新ABI/Process初始化接口。
+main保留28/14字节echo与静态可写message，直接read0/write1，错误到2尽力一次，退出自动关三项；worker与旧testpayload不改。助手承担既定host/真实echo与有限生命周期/一次受控槽满引用回滚/default五命令/旧35页回归，不扩500或旧矩阵。
+独立只读设计审查及.cache/batch28-preparation-20261117/results.json的7项拟定头RV/native/C11/constinit检查通过，107正式源配置哈希保持；仅任务/索引/准备缓存，无产品代改/运行B28验收/重复B27测试/提交推送。下一实现点OpenFileAccess及能力/底层守卫，再表与service、syscall/create和main整批接线。
+
+## B27功能、全部既定P0与三题归档完成，本批收尾（2026-11-17）
+
+B27第16节保留作者原答并集中澄清：kind定义对象种类，file()仍是Builtin指针，Console为空合法；最后close只清打开对象，永久InputQueue保存输入不是待输出。fork共享OpenFile/ref+1及普通offset，独立open普通位置独立但Console仍同一流。
+零长read立即0，不是不返回；-2暂空/普通EOF0正确。read失败不消费的契约针对本次交付成功与否，不靠是否有下个consumer，copy_to可有目标前缀但队列保持。write先完整copy_from防无法撤销的UART部分输出，不存在下游输出队列或物理发送事务保证。单核无同时线程也可timer交错，未来独立producer自身读改写也须保护，consumer SIE0不够。
+协作者整理修正版明确非作者重答，不要求重答/追加题目。统一.cache/batch27-final-20261117/summary.json的130host/3CTest、默认36/正式user19/retry23/旧35页回归P0保持；本轮仅文档索引，无产品修改/重复测试/提交推送。本批收尾，下一方向是标准流或路径程序执行/用户shell，尚未交付下一批或代写。
+
+## B27功能与全部既定P0通过，待原三题理解收尾（2026-11-17）
+
+作者修实际输出span长度后无新功能阻塞，完整路径/B27第14—15节归档。统一.cache/batch27-final-20261117/summary.json全过，107产品源与review/默认QEMU/正式user/独立retry/旧回归/当前树一致，助手未代改产品算法。
+build/接口16项及两profile完整链接过，切模式45内核对象重编/同值不重编/非法拒绝保持。host原120+新10=130具体用例、3CTest全过；新console_fd独立kdbg/user进程各绑定一次，覆盖kind/混合池满表与复用/共享永久流/配置保持/精确路径/普通文件/读写零长与真实映射copy失败重试/实际写长度、操作PMM0。
+默认QEMU36项原五命令/55交付/68次442字节输出、PMM0/池0/146空poll+3S安静。正式user19项：x/NUL/ff回显、q仅bye，18实际28/1/1/1/14；-2真实yield后再读、close退出0。独立retry23项：READ0不poll，收到R后坏目标-1保留原R/合法retry只消费一次，WRITE坏源-1零输出/合法retry与零长静默。
+两user组SIE0整段交付/无A异步producer/文件PMM0，最终池0；实际小镜像6私有页(3内容+2表+根)唯一回收root最后/切kernelroot/Process空/available+6/idle两S。旧保存BSS镜像仍7页/空间。当前独立回归.cache/process-regression/20261117-182317-3/results.json27项/35free21alloc净14/reap3池0且外层user内部固定kdbg。
+助手仅补独立host/CMake/README和两脚本参数，QMP命名管道只读，不修产品副本/不扩压力矩阵。三题随后已在第16节集中澄清归档，本节为功能/P0通过时历史状态，不追加作业/重复测试，无提交推送；以下待修为历史。
+
+## B27旧host恢复，新增WRITE_FD长度仍待修（2026-11-17）
+
+作者报告测试过，原LastTest.log120组通过；第12节先前所有阻塞已修。新只读审查/真实RV-native path头、两boot分支/user任务与main C11-Werror过，证据.cache/batch27-review-20261117/review/recheck/results.json。path全局namespace/stddef仅风格不当门槛。
+当前唯一新运行阻塞file_syscall.cpp:146 file->write(buffer)把固定256数组隐式span全写，不用请求length。实际syscall/真实映射小复现length1返回256输出256，length0也256/256；.cache/batch27-write-count-review-20261117/results.json源保持/16fixture页全恢复，仅诊断初版桩/共享模板接线已修不改产品。应显式span{buffer,static_cast<size_t>(length)}；banner会因此误判退出，旧suite未覆盖18接口，不能算新P0完成。
+助手仅改两回归脚本的隔离make参数CONSOLE_MODE=kdbg；make CONSOLE_MODE=user test-process实证内部TRACE1/CONSOLE_USER_IO0、27项全过/35free21alloc净14/reap3池0/退出0,23,37,0，证据.cache/process-regression/20261117-181725-3/results.json，107产品源稳定。未压力/用户QEMU/改产品payload/提交推送。B27第13节归档，下一步作者修实际输出长度后助手续既定新增host/真实用户最小拒绝重试及默认五命令，不扩矩阵。
+
+## B27首个host中止已定位，草稿集中待修（2026-11-17）
+
+真实CTest为open_file.cpp:109 match closed file panic，task-table尾行截断只是stdout缓冲。最小链接当前对象实证普通acquire得到kindNone/ref1/file有效；.cache/batch27-review-20261117/{ctest-abort.log,kind-results.json}存原日志/失败复现，产品hash保持，无产品代改/整套复跑或QEMU。
+当前优先修：普通acquire按None找槽并设Builtin，最后release清None；syscall_read仅Console做modegate/poll，不能禁止所有Builtin读取。其余集中在B27第12节：read/commit未分派Console；mode先赋后configure破坏失败保持；writefd虽copy到buffer却传原用户VA输出(需传buffer/零长早返回/检查完整输出)。
+尚未完成接线：FS精确/dev/console、boot按宏传mode、user factory准备/创建/reaper/清理与return、ready banner及user_api共享头。Make模式配置静态正确，18号ABI主体已有。助手待原定回归脚本固定kdbg/新host接线；不算作者错，不加题目/矩阵/压力。下一步作者集中修再验，尚未本批P0/功能通过，无提交推送。
+
+## B27控制台FD完整任务已交付，待作者实现（2026-11-16）
+
+用户下一步，BATCH27_CONSOLE_FILE_DESCRIPTORS.md一次给齐。OpenFileKind None/Builtin/Console及pool acquire_console，同池同引用，file=null不能再判空槽，最后close只清打开对象不清长期设备队列；FD open_console与FS精确/dev/console分派，不伪造BuiltinFile/不改Process字段。
+READ16沿原copy后commit，Console正长度内部count0仅在syscall映射SYSCALL_ERR_WOULD_BLOCK=-2，Builtin EOF0；合法零长0不poll/不碰地址。新WRITE_FD18/user_write_fd(fd,buf,len)，先验kindConsole与范围再完整copy_from再输出，旧5/PUTCHAR不动。getter/声明/长返回透传齐。
+输入模式随service configure_console第二enum参数一次提交(默认KernelDebugger兼容旧call)，console_user_io_enabled仅ready+UserProcesses。Make CONSOLE_MODE=kdbg默认/user生成配置宏自动按变化重编；kdbg禁止用户consoleopen，userboot不建A/B只DEMO+reaper。用户正长度READ在现SIE0 syscall内主动poll一次→peek/copy/commit，无后台producer/IRQ/新锁；无任意并发安全承诺。
+作者改main成小型原始echo：open、banner、-2 yield重试、普通字节FDwrite、q打印bye关闭返回0，保留静态可写banner保证RW段；worker/旧testpayload不改。助手随后接test-process/压力工厂显式kdbg防MAKEFLAGS，并承担固定host/真实user最小拒绝重试/default五命令/原35页回归；不跑500或扩矩阵。本批不预留标准0/1/2、不做shell/路径exec。
+独立设计审查及.cache/batch27-preparation-20261116/results.json拟定头RV/native/constinit、新C声明与18号asm/C符号准备通过，106产品源保持。仅文档/准备，无产品代改/算法运行验收/重复旧测试/提交推送。下一实现点OpenFileKind、kind_/getter与分派，再池/FD/路径、模式/启动、syscall和小main；原三题留P0后一次收尾。
+
+## B26功能、全部既定P0与三题归档完成，本批收尾（2026-11-16）
+
+B26第12节保留原答并集中澄清：service拥有静态设备，设备拥有队列/回调，队列拥有数组，task_a局部持KernelConsole/32字节buffer；切任务不终结局部对象寿命，公共设备迁长期owner为解除任务依附。poll0可能满也可能UART暂空，仍查看存量；read_current只复制，feed后commit才消费，不等同清零。span在回调返回前同步用完而非调用前，回调解耦UART正确；配置失败保留旧合法状态/输入。
+协作者整理修正版明确非作者重答，不要求重答/追加题目。统一.cache/batch26-final-20261116/summary.json的120host/36真实QEMU/旧35页回归P0保持；本轮仅文档/索引，无产品修改/重复测试/提交推送。本批收尾，下一方向是将控制台接入FD读写，尚未交付后续批次或代写。
+
+## B26功能与全部既定P0通过，待原三题理解收尾（2026-11-16）
+
+作者完成ConsoleDevice/service与boot/task/Make，context可空/负数guard/无参poll/输出委托和一次配置已修，集中审查无必须修改。助手仅补test_console_device.cpp/CMake/test_main与文档，无产品代改。
+统一.cache/batch26-final-20261116/summary.json全过，106正式源与review/console/进程回归/当前树一致。build/两头RV-native重复/constinit禁copy-move/两实现与boot-task编译、C符号及无动态initializer通过。host原115+新5=120组，配置拒绝保持/ctx空/满256不读硬件/回绕/peekcommit/同步binary/service一次绑定与零PMM齐。
+实际默认QEMU36项：五命令精确；boot/service/device一次配置且实际this等于静态owner符号、真实UART adapter地址/ctx0；55字节各层peek-feed-commit正确，68次输出442字节各层/UART/终端hash一致。PMM0、available本次基线31634保持/池0/satp保持、后续空poll+至少2S且安静。QMP命名管道只读，不修产品副本/刷探针日志。
+当前make test-process27项，退出0/23/37/0，35free21alloc净14/reap3零PMM/池0，证据.cache/process-regression/20261116-214208-3/results.json。未IRQ/多consumer/用户FDstdin/压力扩矩阵；静态镜像页数基线变化不等同运行泄漏。
+完整路径与验收在B26第10—11节；三题已随后于第12节集中澄清归档。本节为功能/P0完成时历史状态，不追加测试/重复已过验证。无提交推送，下面待实现记录为历史状态。
+
+## B26长期控制台设备/服务完整任务已交付，待作者实现（2026-11-16）
+
+用户下一阶段，按单概念选择先设备/长期owner，下一批再FD，不一次叠加OpenFile种类/新writeABI/用户消费profile。
+BATCH26_CONSOLE_DEVICE_SERVICE.md给齐ConsoleIo两同步noexcept回调、ConsoleDevice内含InputQueue、一次configure先预检/ready用try_read标记、poll最多一次-1/0/1且满不读硬件、read/commit不消费/成功提交及write长度范围/一次同步输出；未配操作-1，ctx可空、callback皆非空，禁复制移动身份。
+console_service私有constinit设备直接拥有，六窄转发无全局getter/重绑；boot_configure_console在demo_tasks内适配真实UART，boot_stages file_service后调用；task_a不再栈queue，poll→read→feed→commit，debugwriter委托service再到直UART，防回调递归。task切换不毁栈，迁移为寿命/入口独立；当前仍A独占无锁，未来另poll任务与用户consumer须另设窄临界区，不能只靠singlehart/consumer SIE0。
+作者写核心/boot/Make新两.o；助手固定P0承担host/默认五命令真实服务路径/旧test-process，无用户ABI/FD/标准流/IRQ/压力新增。原三题留功能P0后一次收尾。
+独立只读设计审查及.cache/batch26-preparation-20261116/results.json拟定头RV/native/constinit、boot/task形状/C符号通过；仅声明准备不称算法验收。仅文档/缓存，无产品代改/重复旧运行测试/提交推送。下一步作者建ConsoleIo/Device头，先ready/configure，再poll/read/commit/write与service/boot/task接线。
+
+## B25功能、全部既定P0与三题归档完成，本批收尾（2026-11-16）
+
+B25第12节保留作者原答并集中澄清：peek复制不等于最终交付；未来交付失败不commit并返回错误，不是停机，当前内部push/commit不变量失败panic另论。成功是head推进/size减少，不是回滚；head为0/非0都不能判断空，size0空/256满。先判容量再读UART防读出无处存；未来唯一接收者入队，kdbg/stdin须有消费归属，不能同时抢队首破坏peek→commit。
+协作者整理修正版明确非作者重答，不追加题目/要求重答。统一.cache/batch25-final-20261116/summary.json的115宿主/真实QEMU27项55字节事务/独立35页回归全部P0保持，本轮仅文档/索引，无产品修改、重复测试或提交推送。后续方向为用户控制台设备/标准流，尚未交付下一批或代写。
+
+## B25功能与全部既定P0通过，待原三题理解收尾（2026-11-16）
+
+作者已完成InputQueue与task_a/Make接线，集中审查无必须修改问题；助手仅补test_input_queue.cpp及host接线/文档，无产品算法代改。
+统一.cache/batch25-final-20261116/summary.json全过，102正式源与审查/控制台/旧回归/当前树一致。build/真实头RV-native重复/Werror/task C符号通过；host原110+新5=115组，满256拒绝保持/0ff/回绕/部分提交/放弃交付重试/超量拒绝/目标护栏与零PMM齐。
+真实默认QEMU27项：原五命令精确；55字节push→peek→feed→commit各55，0→1/peek1保持且对象hash不变/feed后commit1→0，同栈对象最终空。末尾149空poll+2S ticks且串口安静，PMM0/available31635/池0/satp保持。只读QMP命名管道/成员观察，不修产品副本、不加串口日志。
+当前make test-process27项/退出0,23,37,0/35free21alloc净14/reap3/池0仍过，证据.cache/process-regression/20261116-174251-3/results.json。未扩压力/IRQ/paste或用户stdin，放弃交付仅host队列机制，不称用户拷贝失败已实装。
+完整执行路径与验证在B25第10—11节；三题已随后于第12节集中澄清归档。本节为功能/P0完成时历史状态，不追加测试作业/重复测试。无提交推送，以下交付待实现为历史状态。
+
+## B25原始输入队列完整任务已交付，待作者实现（2026-11-16）
+
+用户同意下一批，BATCH25_CONSOLE_INPUT_QUEUE.md一次给齐接口、调用约束、接线、固定P0及原三题。
+新增tinyos::console::InputQueue固定256字节，head/size环；push满拒绝不覆盖、const read_current复制不消费、commit实际数量后移头，超量拒绝保持。task_a栈上唯一生产/消费，每轮先判容量再尝试收1字节，最多32字节feed完成后commit；console拒绝字符也算处理，意外push/commit失败panic。
+不加用户ABI/标准FD/IRQ/全局输入服务，不承诺批量粘贴无损；未来stdin另定长期拥有者和消费归属。默认安静及旧回归隔离保持。作者写核心和Make接线，助手负责提前固定的宿主/QEMU/原test-process；不扩500或旧历史矩阵。
+只读设计审查及.cache/batch25-preparation-20261116/results.json拟定头RV/native重复包含、任务形状编译/C符号通过；最初unused变量仅修准备检查。仅任务/文档，无产品代写、算法运行验收或提交推送。下一步作者先建头与实现getter/try_push，再peek/commit及task_a接线。
+
+## B24功能、全部既定P0及三题归档完成，本批收尾（2026-11-16）
+
+B24第14节保留三题原答并集中澄清：token借line_、输出借局部数组；覆盖存活内存与生命周期结束后的悬空不同，输出须同步消费不能留指针。超限在写入前拒绝，discard到换行防截断命令执行；退格能识别但按策略忽略，不是转义字符失识。CR提交并吞紧邻LF只一次，其他后继字节正常处理。cat64分块至EOF/hex前64正确，工具局部read_at不接用户FD，保持的是OpenFile位置/引用，不是笼统CPU上下文。
+协作者整理修正版明确非作者重答，不追加题目/重答；此前统一.cache/batch24-final-20261116/summary.json的110宿主/20命令QEMU/原35页独立回归全部P0保持。本轮仅文档/索引，无产品改动/重复测试/提交推送；下一批方向待后续选择，不自动代写。
+
+## B24功能与全部既定P0通过，待原三题收尾（2026-11-16）
+
+作者已修feed单finish/CR后skip、invalid与超限整行discard和line rejected。length_+1>160在既有<=160不变式下正确，不加风格门槛；两条误贴未用声明仅清理建议不阻碍验收。
+统一.cache/batch24-final-20261116/summary.json全过，100源与各阶段一致：build/nm/3头RV-native/C任务符号/默认trace0通过；host原104+新6=110组具体用例，cat65含NULff/64+1、hex18/64上限、解析/编辑/160与161/非法字节及恢复/PMM保持齐。
+实际默认QEMU20项：helpCRLF一次、cat about18、hex worker前64真实嵌入ELF一致、missing拒绝后help恢复；无USER/唯一A，PMM0/available31635/池0/satp保持，后续155空poll+3S中断且串口安静。stdio+QMP命名管道只读RAM，独立interrupt日志共4S，无socket审批/产品副本修补。
+当前持久make test-process再验原退出0,23,37,0/35free21alloc净14/reap3/文件0PMM池0。未扩矩阵/500/旧五页脚本或提交推送。本节为功能/P0完成时历史状态，三题已随后于第14节集中澄清归档，不重开测试/加作业；以下待修为历史阶段。
+
+## B24新要求完成：安静启动、旧负载独立test（2026-11-16）
+
+用户要求移走main/worker fork等自测、解决timer插断输入，已按新授权调整启动/trace：默认boot_create_tasks仅A，FS/两ELF registry/sched保留；main/worker小应用仍2LOAD，默认不启动。原payload和boot FD自测原样迁test/process_regression，make test-process隔离换入2S2U/reaper工厂+trace1，不依赖.cache实现。
+KERNEL_TRACE默认0仅包过程打印，时钟/调度/退出保留，fault/panic/清理错误保留。build/kernel_config.h自动按值变更重编，不需clean，最终产物0。只局部修struct声明/输出回调noexcept{}/volatile计数写法，保留作者console算法。
+统一.cache/quiet-boot-20261116/summary.json全过：default慢输入cat /etc/about无插日志、18字节/提示正确，独立QEMU记录4次S timer；build/host104/nm无诊断；最终回归27项35free/21运行alloc净14/reap3/池0/退出0,23,37,0且100源匹配；压力工厂迁移2轮8workers/77alloc84free过，未500/旧历史矩阵。trace1→0/重复0不重编等也过。
+B24第12节待作者修：console.cpp误贴两全局声明；if('\n')恒真及finish清skip导致CRLF无效；缺160容量检查；非法字节应整行discard并用error: line rejected。当前短命令通过非整批P0，下一步修行状态后助手补既定新宿主/完整命令QEMU，三题待。无提交推送。
+
+## B24文件显示主体已写，下一步console行状态（2026-11-16）
+
+实读新3头/2cpp：cat64分块及hex16行/64上限/8位偏移/双hex主体静态正确，console.cpp仍空。file_view.hpp class BuiltinFile应改struct以消Clang mismatch警告；ConsoleOutput.write补原约定noexcept及{}。五源hash保持，.cache/batch24-file-view-review-20261116/results.json仅语法/源码，不宣称运行或P0通过。
+下一实现点write_text/start，再feed按skipLF→CRLF提交→discard→BSDEL→ASCII容量顺序；finish_line与execute_line职责仍按整批文档，未新增检查/矩阵。助手仅文档/审查，无产品代改/运行测试/提交推送。
+
+## B24内核cat/hex工具完整任务已交付，待作者实现（2026-11-15）
+
+用户“开始吧”，已交付BATCH24_KERNEL_FILE_CONSOLE.md：console(160字符ASCII行/CRLF/BSDEL/整行拒绝/分派lookup)与file_view(const BuiltinFile&、cat64分块完整原样输出、hex前64每行16 offset8)两个模块；共享ConsoleOutput{context,write(span<const char>) noexcept}同步输出，不借用户FD/offset/refs。
+命令help/cat PATH/hex PATH，具体提示/错误/格式已固定；超限或非法字节整行作废到换行且BS不能恢复、下一行可重试。task_a/b所在demo_tasks.c局部改cpp，同.o和boot_private.h的C符号保留；task_a栈上对象传UART writer、删直接回显，空时原delay。主Make两debug.o作者接，宿主/脚本助手负责；旧本模块.o/.d仅必要时移除，无全仓clean。
+P0一次给齐：build/header/CABI+原host、真实file_view65字节/NULff/hex18与64上限、console状态/解析拒绝恢复、真实QEMU五条命令及原35free21alloc/池0/两S ticks保持；不扩B22矩阵/中断队列/用户ABI/ls/压力。三题留实现/P0后一次回答。
+独立审查与.cache/batch24-preparation-20261115/results.json拟定头RV/native及task形状编译/nmC符号通过，94正式源保持，仅准备不当运行验收。未代写产品/重命名/删除产物/提交推送。下一步作者先建3头并写cat_file，再hex、console状态/分派，最后任务/Make接线。
+
+## B23功能、全部既定P0与三题归档完成，本批收尾（2026-11-15）
+
+B23第9节保留原答并一次集中澄清：三个返回值0/255/-1正确；char能比较，用int是给完整字节范围之外的-1留空间。THRE是发送保持寄存器空/可写下一字节，DR是接收有数据；当前无软件输入队列，RBR无条件读可能旧值。驱动一次尝试立即返回，task_a负责轮询；delay仅忙等，不主动让CPU或设BLOCKED，其他任务由timer→trap→sched_on_timer抢占运行。
+整理修正版明确非作者重答，不追加题目/重答。统一.cache/batch23-final-20261115/summary.json的41项QEMU/host104/94源稳定结果保持；本轮仅文档/索引，无产品改动/重复测试/提交推送。下一方向为已讨论内核cat/hex工具，尚未交付其完整任务或代写。
+
+## B23功能与全部既定P0通过，待原三题收尾（2026-11-15）
+
+作者uart_try_getchar正确：LSR DR后才读一次volatile uchar RBR并提升int，无等待；task_a唯一接收/成功回显/空delay，已无A刷屏。ch_ != -1在现约定正确，ready提示可选不加门槛。
+统一.cache/batch23-final-20261115/summary.json与B23第8节：build/nm/头RV-native C/C++/host104通过，94源在build/最终QEMU间稳定。整合真实QEMU41项：原正常34项（双worker23/37父0/池0/35free21运行alloc净14/reap3）保持；5字节7a/00/ff/CR/LF返回122/0/255/13/10，真实task_a及raw回显各一次，注入前1292次-1，六阶段各>=3次-1，读后A继续轮询+两S ticks/UART PMM0。
+AF_UNIX独立后端无monitor/TTY，二进制日志保留；仅隔离观察器，无正式driver或任务逻辑代改，协议完成约16.3s外部停止。先前沙箱socket限制在获准本机执行后通过；缓存漏wrap只修测试接线。unused normal-baseline准备不计证据。
+助手已迁test/verify_user_data.py旧AA为release后真实A-poll标记+两S ticks，检查器/接线12项过；历史五页字段/API未迁、不声称旧整套QEMU通过。真正A存活由新run实测。
+本节为功能/P0完成时历史状态，三题已随后在第9节集中澄清归档；不追加矩阵/重答或自动代写。后续内核cat/hex工具意向保持。未提交推送；下面待实现记录为历史阶段。
+
+## 后续意向：UART后增加内核文件查看工具（2026-11-15）
+
+作者希望内核内文件查看更直观。先完成当前B23 UART接收，再另批做小型内核调试命令入口，最小cat /etc/about及hex /bin/worker；复用lookup_file/read_at，局部offset/固定buffer按实际长度分块，不借Process/FD、不改变用户offset/refs，命令解析不塞UART驱动。
+ls需另设计窄只读枚举（当前FS只有lookup），不暴露可变数组。工具S-mode，未来shell仍U-mode经syscall。已记B23第7节，仅后续方向，未扩B23验收/交付工具完整任务/代写产品或宣称实现。
+
+## B23 UART轮询输入完整任务已交付，待作者实现（2026-11-15）
+
+作者继续建议输入驱动，已交付BATCH23_UART_POLLING_INPUT.md：仅uart.h/c新增int uart_try_getchar(void)（0..255字节/-1暂空），LSR5 bit0判DR后才读RBR0一次；复用task_a唯一接收并回显，替换A刷屏，成功立即继续/空时delay；无新槽/临时GETCHAR18/PLIC/队列/标准FD或调度改造。
+QEMU10.2.1对应上游virt.c/serial.c确认base10000000、LSR_DR/THRE、DLAB0读写offset0不同语义；现boot已有UART页映射。只是设计依据，未运行新增功能/代写核心。
+固定P0助手负责：build/头/host、真实QEMU空→z/NUL/ff/CR/LF逐个精确消费回显→再空，A实际轮询/定时抢占及原双worker/最终池空/35free21alloc账本保持。旧verify_user_data.py:258的AA存活断言迁移由助手处理，不扩整套历史五页矩阵。三题留实现/P0后一次回答。
+本轮仅任务文档/索引，尚未B23验收/产品修改/提交推送；下一步作者先写uart_try_getchar两条路径，再改task_a短演示，集中审查。
+
+## B22功能、全部既定P0与三题归档完成，本批收尾（2026-11-15）
+
+B22第19节保留三题原答并集中纠正：Process是文件资源使用者而非文件；fd只索引本进程表，同数字不自动共享/retain，fork显式继承才共享OpenFile/位置。fork allocate失败除close_all_files(pending)还须discard地址候选；核心是可失败准备在提交前、成功后只无失败移交，父资源/ID保持。exec释放旧地址仍保留FD，所以release_address_space不关文件；exit/fault另关闭引用。复制失败不推进共享offset，buffer前缀仍可能被改。
+协作者整理修正版明确非作者重答，不追加题目或要求重答。此前统一.cache/batch22-final-20261115/summary.json全部P0通过保持，本轮仅文档/索引更新，无产品修改、重复测试、提交推送；下一批方向待后续决定，不自动代写。
+
+## B22功能与全部既定P0通过，待原三题理解收尾（2026-11-15）
+
+统一.cache/batch22-final-20261115/summary.json，B22第18节。当前make/nm/目标native头与CABI通过；host-current 104用例/CTest1通过（作者仅清process空白后复验），94正式源保持。
+正式normal34项：新OPEN4/READ6/copy6/显式close2/exit自动close2/最终私有池0、文件PMM0；旧14四次7/11、双worker23/37父0及35free/运行21alloc/净14/reap3/末尾两S ticks保持。
+真实边界33调用19拒绝；跨页实际前缀Tin被写但共享refs2/offset0不变，合法重试原数据、父续读至18。生命周期23阶段各一次：fork共享/parentclose、SPAWN空、EXEC保留及未知EXEC拒绝、fault清理、reap复用、满槽rollback保持nextID8；56free/42运行alloc/净14/reap5/20文件调用PMM0/最终池0。
+满槽验证用隔离trap内临时占用UNUSED状态并完整恢复fixture，真实clone/retain/allocate失败/双清理执行；非自然活任务满载证明。QEMU25/35/55秒外部停止；仅测试/隔离观察器，无产品代改、P1/P2扩矩阵、提交推送。
+本节为功能/P0完成时的历史阶段，三题已随后于第19节集中澄清归档，见最新记录。不再重复修正/验收或下发测试，不自动开启下一批。以下失败/待修项均为历史阶段。
+
+## B22正常演示已修复，既定QEMU P0复验中（2026-11-15）
+
+worker旧误open/close已删；作者贴两份FD/旧14成功及fresh日志，worker ID4=23/ID5=37，父ID3=0，fork snapshot/isolation正常。前述运行阻塞已解除，不再下发三处修正。
+宿主104用例通过保持；当前make/nm/6个头RV+native自包含重复/C11四头/constinit禁复制检查通过，94源hash稳定，.cache/batch22-final-20261115/build/results.json。仅所有权测试漏完整定义include修fixture，无产品改动。
+助手并行按原P0验证normal资源账本、U-mode文件边界、fork/exec/exit共享生命周期；未整批通过/未问三题/未提交推送，不追加矩阵或作者测试代码。B22第17节。
+
+## B22正式QEMU：boot/fork已修，worker残留旧open导致退出1（2026-11-15）
+
+作者报告timeout，复核boot长期FS/init/configure已恢复，fork只adopt一次；worker虽新增正确FD演示，旧14段仍有两次open都要求0及close(fd_2)，须删这三块，保留原read_file和新FD段。
+真实timeout25s make qemu：FS启动通过/U0退出0，ID4打印open file failed退出1，父ID3 unexpected child exit result退出1，无新FD成功日志。8s仅到spawn/yield不足判断。证据.cache/batch22-worker-review-20261115/qemu-25s.log，B22第16节。
+未代改产品/宣称整批P0通过；待作者删残留后继续既定验证，不新增测试作业。此前宿主104用例通过仍有效。
+
+## B22最新集中审查：构建通过，三处运行问题待作者修正（2026-11-15）
+
+make -j4通过；OPEN/READ/CLOSE、服务命名/公共READ_MAX、用户包装、fork pending及失败回滚、统一exit切根后close_files、exec保留FD均已接好。
+当前三处：boot删长期g_builtin_fs/init/configure只剩ready查询（无任何生产configure调用，启动必拒绝）；fork helper重复adopt(candidate)，第二次用空候选覆盖孩子空间；worker丢首fd/第二次也要求0/仍只走旧14。
+作者修复方向：恢复长期FS→init→configure→lookup；fork仅一次adopt再adopt_files；保留旧14并新增保存两fd的READ16 7+11与独立7、关第二fd/首fd留exit/新日志。不硬编码fd以兼容exec继承。
+B22第15节，独立只读审查结论一致。助手宿主迁移/Process四组持久用例完成，make test全部通过（104个run_case，CTest1/1），94正式源hash保持；证据.cache/batch22-final-20261115/host/results.json。真实service与映射copy/reset/clone/adopt/release地址保留FD均覆盖；未代改三块产品逻辑/运行错误路径QEMU/整批P0或提交推送，不追加矩阵。以上替代此前阶段记录的待办状态。
+
+## B22服务命名已按作者明确授权统一（2026-11-15）
+
+用户“这个你改把”指两组名字。助手只改一致性：file_service.hpp声明改open_file/close_all_files、Process对应两调用、作者新增fork失败清理的close_all_file同步复数；保留现有服务实现与其他作者并行代码。全生产/测试搜索无open_path/close_all_file旧标识符。
+真实Process/service/FS/model局部native链接及运行open0→close→resources_empty通过，相关Process/service/user_task_create RV语法无诊断。证据.cache/batch22-name-fix-20261115/results.json，B22第14节。未改其他逻辑/跑整批P0/提交；剩生命周期/worker/常量与宿主迁移仍按原任务检查。
+
+## B22 OPEN/用户包装/boot配置已接，下一步fork与统一退出（2026-11-15）
+
+最新OPEN已正确copy_from内核path数组并按实际长度传Process，new user_open/read/close包装在.text中且GNU-stack之前，boot已configure_file_service。旧两组服务名字仍未统一，READ_MAX仍局部cpp宏未公共化。
+下一主线user_task_create：clone地址后clone_file_descriptors(pending)，失败清地址；allocate失败close_all_files(pending)再discard候选；helper新pending引用参数成功adopt_files无失败移交。统一user_task_exit.task_destroy切kernel root后close_files再release_address_space，exec不关文件。然后workerFD演示；原P0由助手承担。B22第13节，仅源码状态未编译验收/产品代改/提交。
+
+## B22当前剩四块修正/接线，尚未验收（2026-11-15）
+
+用户问还差多少，实读状态：service/Process/sched三薄壳/15—17分发/READ+CLOSE主体、Make新service.o及user API声明已写。剩1)OPEN仍直接reinterpret用户path为span须copy_from，原两组服务名字仍不一致，局部READ_MAX移公共头；2)fork pending FD继承/回滚/adopt及统一exit/fault close_files未接；3)user/syscall.S三入口缺；4)boot仍旧configure名、worker缺FD演示。exec释放名已rename且不关FD。
+
+B22第12节记录，仅源码状态核对不是功能通过。下一步先修OPEN与命名，再接生命周期/用户启动；之后助手完成原P0。未代改产品/跑新测试/提交推送，不追加矩阵。
+
+## B22 Process草稿局部审查正确，仅服务命名待统一（2026-11-15）
+
+用户请求看process.cpp。resources_empty含FD、reset失败保持、release_address_space只放UAS、find两版及clone/adopt委托均正确，旧exec/exit调用已rename。实际服务hpp声明/Process调用open_path和close_all_file，而cpp定义open_file和close_all_files；统一即可。void返回void表达式合法不误报。
+
+RV64局部语法无诊断；native真实模块局部链接实证两未定义引用，未替换服务或修副本，六相关源hash保持。证据.cache/batch22-process-review-20261115/results.json，B22第11节。diff-check旧三处行尾空格仅排版。未运行整批P0/代改产品/提交；后续桥接/lifecycle按原任务继续，不追加门槛。
+
+## B22进程FD/用户open-read-close完整任务已交付，待作者实现（2026-11-15）
+
+用户下一步，BATCH22_PROCESS_FILE_DESCRIPTORS.md一次给齐接口/生命周期/失败事务/构建演示/固定P0/三题。新fs/file_service.hpp/.cpp统一拥有私有constinit40池及FS借用配置，迁原g_filesystem和配置名（configure_file_service），不公开池/任务/root getter。Process只私有files_表，窄open/find/close/close_all/clone/adopt/empty接口委托；release_resources改release_address_space且不关FD，resources_empty/reset加入表空检查保留失败状态。
+
+15OPEN/16READ/17CLOSE，用户fd用long保持完整宽度，长度<=256；C调度操作接frame验证当前USER/SIE0再传Process&给C++文件边界，无Process暴露getter。复制成功后commit，失败可改用户前缀但位置保持。fork allocate前准备地址与pending FD表，失败清两候选，成功原无失败阶段adopt；SPAWN空FD，EXEC保留，EXIT/FAULT统一切kernel root后close_files再release地址，reap/reset只接已空表。原1—14保持。
+
+正常worker保留14演示，新增两独立open/read7+11/显式关第二fd/首fd留退出自动关闭/日志，不硬编码0/1以允许exec继承；DEMO不加逻辑。助手承担宿主迁移与隔离P0：正常35/21，加真实FD边界/跨页失败重试及fork共享/SPAWN空/exec保留/退出fault清理/Task满fork撤销与未知EXEC保留。固定生命周期参考56free/42运行alloc/net14/reap5，等价拆分必须各记准确账本，不追加大矩阵/500压力。
+
+独立只读审查支持私有文件服务方案。接口准备.cache/batch22-preparation-20261115/：临时新头/Process形状在目标/native C++20 -Werror及C11边界语法过，constinit/禁copy通过；临时三用户包装+worker示例O0链接DEMO RX3994/WORKER2153/RW各4152，无诊断，92正式源hash保持。只是准备，未产品改动/运行B22功能P0/提交推送。下一步作者从Process私有FD与资源语义开始，随后service/桥接/生命周期/boot-worker按文档顺序完成；三题留功能/P0后。
+
+## B21功能、全部既定P0与三题归档完成，本批收尾（2026-11-15）
+
+最新正式正常QEMU31项全过，92源hash稳定：实际read7/11拼18正确、read位置0/7不推进、commit7/18，独立打开不同/另一位置0、共享refs2、父close后子1、四次close后两表空/池0/幂等，全程PMM0/satp保持。B20四次真实用户read及原35free/21alloc/net14/reap3/双worker23/37父0/两S ticks保持。正式/隔离构建无诊断/nm-u空，当前make test复验全过。
+
+统一.cache/batch21-final-20261115/summary.json，build/host-current/normal齐；11/14 host六组证据保留。正式boot helper只有数量/位置/引用检查，字节由只读探针实证，未补副本产品逻辑；显式字节循环只是建议不增加验收门槛。25秒runner外部停止，无压力/故障矩阵扩张、产品代改或提交推送。
+
+B21第17节已存三题原答/集中澄清/修正版，不要求重答：独立open共享BuiltinFile但OpenFile/offset独立，继承复制指针共享OpenFile/offset；read_at前置拒绝与user_copy_to中途失败不同，后者可改用户前缀但不提交offset；父close2→1子仍有效，末次关闭清的是池中OpenFile状态/使槽可复用，不free池存储或销毁FS记录/永久字节。理解归档及索引同步，整批收尾。
+
+下一方向B22将模型接Process/用户open-read-close与fork/exec/exit关系，具体完整任务尚未交付，不自动代写。FD模型当前仅boot使用；原READ_FILE14显式offset保持。此轮仅理解归档，无产品修改/重复测试/提交推送。
+
+## B21 boot/Make已接，当前构建/宿主复验通过，最终QEMU进行中（2026-11-15）
+
+作者贴FD model OK及scheduler启动日志。实读boot匿名helper open_file_test，正确两次open/读7commit/继承refs2/共享读11commit到18/父close0/全关池空与幂等；Make两模型.o已接。helper只检查数量/位置/引用，未显式比较buffer，已建议作者补18字节循环；不为测试源断言存在性新增门槛，助手只读探针直接核实际read字节即可实证原P0要求，不修副本逻辑。
+
+当前make -j4无诊断/nm-u空；make test复验无诊断全部过，证据.cache/batch21-final-20261115/{build,host-current}/results.json。模型自11/14宿主快照仅open_file.cpp空白变动，其他产品变化为Make与boot；本次原suite已复验。之前宿主六组及接口证据继续保留11/14路径。
+
+address_space_qemu正准备/执行.cache/batch21-final-20261115/normal：真实7/11读字节与commit位置、4次close引用/末次清空/PMM0/satp；保留B20正常四次READ_FILE和35free/21alloc/reap3/双worker23/37父0两S ticks。已通知准备好直接跑当前真实源码，作者若加比较致hash变则仅最后normal按最新重验。尚未最终P0/三题，勿提前整批完成；无产品代改/提交推送。
+
+## B21全部模型方法/宿主P0通过，待作者boot与主Make接线（2026-11-14）
+
+adopt与inherit_from最新正确：pending表登记成功retain/按原fd保留空洞，失败close_all回滚，全成adopt移交；源不动/不acquire。实际RV64实现/头自包含重复/constinit/禁copy/接口调用语法无诊断。
+助手新test_open_file.cpp并接宿主三文件，真实FS/OpenFile/Pool/FDTable六组及旧suite无诊断通过：独立/共享含孔洞/引用末次关闭/8与40满保持重试/adopt/EOF空文件/prepare不前进commit实际数/非法fd与commit保持，逐组零PMM；共用panic头的C abort桩仅定义在新test，未加support文件或替身实现。92正式源hash保持。证据.cache/batch21-final-20261114/host/results.json，target-stage仅语法证据。
+
+B21第14节归档。下一步作者按原第5节加主Make open_file.o/file_descriptor_table.o及boot私有演示助手，在about(i==2)分支用已lookup的*result调用，7+继承11/独立打开位置0/两表全关闭池空/日志。当前主Make/boot尚未接，未QEMU/整批P0/三题，不改Process/ABI，不追加矩阵/压力，无产品代改/提交推送。
+
+## B21池/FD基础修正局部回归通过，下一步继承与移交（2026-11-14）
+
+最新acquire offset0/ref1、FD open跳过非空/池判空后发布已正确。真实模块临时宿主ASan/UBSan局部回归通过：引用生命周期、独立open0/1、read/commit、const/nonconst get和close边界、最小槽复用、满表/满池保持与close_all幂等；正常host panic桩，不改产品，LSan仅因ptrace关闭。证据.cache/batch21-basic-check-20261114/results.json，七源hash保持。
+
+B21第13节归档；inherit_from/adopt及boot/Make未完成，尚未整批P0/QEMU/三题。下一步作者先adopt空目标非自身逐项移交清源（不改refs），再inherit临时retain账本/失败release回滚/成功按原fd发布（不acquire），保持原完整任务范围，无提交推送。
+
+## B21共用panic/边界已修，当前剩引用0和open覆盖两项（2026-11-14）
+
+runtime/panic.h已由作者建立，C/C++声明/宏统一，panic.c及两模型包含；C11/目标C++重复包含、panic实现、模型target/native语法均无诊断。release三种非法情况已实际panic；close/get边界和const pointer定义正确；offset已0。
+
+当前acquire ref被改为0仍应1；FD open补判空时删掉entries[i]空槽判断，每次直接分配覆盖fd0。真实小复现first0/second0/first_ref0/fd0覆写/fd1空/pool.in_use0，原八产品hash保持，证据.cache/batch21-fix-review-20261114/results.json。未代改，B21第12节记录，尚未整批P0；修两项后继续inherit/adopt/boot/Make，无额外门槛/提交。
+
+## B21当前FS集中审查：基础FD草稿已写，六项待修及后续未完成（2026-11-14）
+
+实读整个include/fs/kernel/fs并独立复核。旧B19/B20六文件hash保持；新acquire当前offset/ref均-1，须0/1；FD open池满返回nullptr仍returnfd假成功；close/get缺fd上下界；const get误const OpenFile&需指针且缺定义；release旧归属/外池写已修但非法仍静默；FD cpp kernel_panic缺显式C声明（助手前close_all片段漏交代，已明确）。read/commit/retain有效路径/in_use/empty与close_all遍历设计正确。
+
+目标两cpp语法过，native open_file过/FD因panic未声明失败。诊断构建只强制声明/host abort桩未修逻辑，实证初始两MAX/读EOF0/commit0拒绝、池满open0而get0空；ASan/UBSan实证get8/close-1越界。仅LSan因sandbox ptrace不可用关闭，不是测试heap泄漏。证据.cache/batch21-fs-review-20261114/results.json及日志，源hash保持，无产品修改/整批P0/QEMU/压力/提交。
+
+B21第11节归档。下一步作者集中修六项，再继续原inherit/adopt/constget定义、boot短演示/Make接线；这些未写按阶段待办，不作为已完成函数新增错误。原固定P0/三题范围保持，未提前验收。
+
+## B21 OpenFile/Pool局部草稿审查，待作者修正（2026-11-14）
+
+用户请求检查open_file.cpp，实读头/实现并独立只读复核。四项集中待修：acquire引用=-1应1（size_t成SIZE_MAX）；release归属前解引用；循环不命中却清空外池活对象；SIZE_MAX缺直接stdint.h，目标因自供span传递include语法过但原native实际失败。非法release静默return也应按既定内部不变量诊断。read/commit/retain有效路径/in_use正确，头commit_read(size_t const)合法仅可读性。
+
+证据.cache/batch21-open-file-review-20261114/results.json：原native编译错误已存，诊断命令仅强制包含缺头以复现其余bug，初始MAX/retain拒绝/一次release仍活/外池对象被清空均实证；不是宿主通过声明，未改四产品源/hash保持。B21第10节归档。下一步作者改本节后继续原FD表/boot/Make任务；尚未整批P0/三题，未提交推送。
+
+## B21内核打开文件模型完整任务已交付，待作者实现（2026-11-14）
+
+用户继续下一步，BATCH21_OPEN_FILE_MODEL.md一次给齐接口/寿命/失败状态/boot演示/固定P0/三题。按单概念分批：B21只做OpenFile/固定40池/固定8FD表（新4个C++文件），独立open位置独立，继承保留fd共享对象/位置并加引用，close最后引用清对象；get借用不跨关闭，copy/move禁用，adopt空目标无失败转移。read_current不推进，commit_read实际count后推进，中间SIE0/不调度，预留用户拷出失败不改位置。FD0合法无标准流预留，无heap/FD用户ABI/Process字段。
+
+boot局部模型演示about7+继承11/独立第二打开仍offset0/两表全关池空，PMM0，输出[fs] FD model OK；之后原B20用户流程。助手承担真实宿主和必要正常QEMU固定P0，不跑500压力/扩大矩阵。核心作者写，下一步先open_file.hpp/.cpp实现OpenFile与Pool，再FD表/boot/Make。
+
+下一B22再接Process与open/read/close：新建空表，fork共享，exec保留，exit/fault关闭，reset/reap要求空。注意现release_resources被exec/exit共用不能统一close_all；fork继承临时引用准备应在allocate前，失败撤销，成功adopt，保留原无失败发布/ID规则。本批不实施这些接线。
+
+独立代理只读设计审查通过分批方向，.cache/batch21-preparation-20261114/建议头在目标/宿主C++20 -Werror下自包含/重复包含/constinit/禁复制移动/调用语法均过，87正式源hash保持；只是接口准备，尚未实现/链接/运行B21P0。只新增任务与索引/记忆，未改产品/提交推送；三题留功能/P0后。
+
+## B20功能、全部既定P0及三题归档完成，本批收尾（2026-11-14）
+
+作者worker预期已正确保存TinyOS（O/S均大写），正式make -j4通过/nm-u空/RX1465 RW4152。最终正常QEMU28项全过：两正式WORKER共4次syscall/bridge/copy_to，各7/11与18字节about精确，零PMM且Task/Process/context/frame/root保持；启动FS源保持，双worker23/37父0，原5x7/35free/运行alloc21/净恢复14/reap3零PMM/两S ticks全过，87正式源hash保持。25秒runner外部停止，未改副本产品逻辑。
+
+先前宿主三组/原suite及32次真实U边界已过，之后仅worker预期字符串修改，服务/FS/dispatcher/copy未变不重复。summary已更新.cache/batch20-final-20261114/summary.json，normal/results.json及log齐全。B20第11节、导航/路线/模块状态已同步，三题第10节归档不重问，整批收尾。
+
+下一方向为打开文件状态/FD的独立设计与实现，具体下一批尚未交付，不自动代写或混入路径EXEC/磁盘。保留当前READ_FILE14显式offset语义及已有ABI。本轮助手仅测试/文档/探针，无产品代改/提交推送。
+
+## B20三题原答/澄清已归档，最后正常P0仍待TinyOS修正（2026-11-14）
+
+作者在正常演示待修期间主动答三题，逐字原答和集中澄清/修正版已存B20第10节，不要求再答。明确span不翻译/校验用户地址，path_length无需NUL；实际2字节只拷2，短读/跨页失败为覆盖前缀而非截断/清零；当前显式offset无Process位置，未来Process持fd表、打开对象持文件引用/位置/模式，文件存在可读只是检查，fork共享语义另批。
+
+最新user/worker.c:35已改成TinyOs，仍须末尾S大写为TinyOS，正式正常资源P0尚未运行；宿主及32次真实U边界已通过不变。理解完成不冒充整批P0完成。下一步修这处后followup address_space_qemu执行.cache/batch20-final-20261114/normal/run_probe.py，再汇总即可，无须重问三题或重跑无关压力。未改产品/提交推送。
+
+## B20宿主与真实U边界P0通过，正式正常专项待TinyOS拼写修正（2026-11-14）
+
+助手新增test_file_syscall.cpp三组并接宿主三文件；真实bridge/FS/usercopy/VM的绑定拒绝/同对象init后重试/重复绑定保持、7+11、实际2字节边界/EOF/MAX/零长通过，原suite/B19七组保持且无诊断，长期static提供者无reset API。
+隔离真实U边界13组check通过，两测试worker各16次/总32次ecall14，原B20固定拒绝/短读/跨页失败合法前缀全覆盖；每次零PMM、satp/Task/FS记录全内容hash保持，同frame/sepc+4，87源hash不变。证据.cache/batch20-final-20261114/{host,user-read}/results.json，summary.json明确部分通过。
+
+仍只剩正式user/worker.c:35 expected Tinyos与实际TinyOS大小写不符，已告作者修且未代改。address_space_qemu仅准备normal探针，修好后运行原35free/21alloc/3reap及正式四次7/11/双worker23/37父0；不要为此重跑宿主/边界或修改副本绕过作者错误。尚未全部P0/三题，不追加矩阵/压力，未提交推送。
+
+## B20边界与接线已补，目标构建通过，P0验证进行中（2026-11-14）
+
+实读作者最新file_syscall：g_fs/root/path0/127/read256预检已正确，错误零长/offset关系/dst0拒绝已删，共享宏/Make对象/boot绑定/worker7+11已接。make -j4通过、nm -u空、头/实现目标语法无诊断；WORKER RX1465/RW4152保持布局。唯一当前正常演示阻塞为expected写Tinyos而实际TinyOS，已告作者修，未代改产品。
+
+并行委派b16_host_stress仅宿主测试接线/真实模块验证（不跑500压力）；b20_user_read_qemu仅.cache隔离真实U边界P0；address_space_qemu准备正常资源/四次read7/11观察，作者修正拼写后运行，不悄悄改副本。原B20第6节固定范围保持，三题待全部P0后。
+构建证据.cache/batch20-final-20261114/build/results.json，87正式源配置快照。还未汇总整批P0/未提交推送，勿把编译成功当本批运行通过。
+
+## B20首轮审查：主体/ABI已写，边界与Make/boot/worker接线待修（2026-11-14）
+
+实读新file_syscall.h/.hpp/.cpp、getter和全部接线。configure/getter及syscall14五寄存器/API/asm静态正确；桥接目标语法/C头及C++重复包含无诊断，diff-check过。make -j4实际链接undefined fs_syscall_read_file：Make未加kernel/fs/file_syscall.o，未跑QEMU/完整P0。
+
+集中待修已写B20第8节：handler须先g_filesystem非空/path_length<=127/length<=256，否则可空解引用/写爆内核path或buffer；删入口length0/offset>=length/dst0拒绝，合法零长/EOF在lookup后返回0，正count由copy_to验目标；用共享SYSCALL_READ_FILE_MAX删局部同名常量/限定名。boot尚未绑定configure，worker尚未7+11读取about/校验/日志。已列齐，保留作者修改空间，无产品代改。
+
+证据.cache/batch20-review-20261114/results.json，12相关源构建文件在独立语法检查期间hash保持。下一步作者一次修正/补齐后复验原P0，不增加压力/新矩阵，三题留功能/P0后；无提交推送。
+
+## B20用户按路径读取完整任务已交付，待作者实现（2026-11-13）
+
+B19已收尾，用户问下一步。本批BATCH20_USER_FILE_READ.md一次给齐接口/顺序/寿命/接线/固定P0与三题：新增READ_FILE14，a0path/a1长度/a2uint64 offset/a3用户dst/a4长度，路径<=127不含NUL、读取<=256，返回实际count/0/-1。先复制路径到内核再lookup/read_at暂存，最后user_copy_to实际count；未知路径即使len0仍-1，合法len0/EOF不访问dst，超256始终拒绝，拷出失败允许合法前缀变化。无FD/游标/PMM/Process字段，不同时做open/close或路径EXEC。
+
+计划fs/file_syscall.h/.hpp/.cpp提供C桥接与一次配置，root由syscall.c显式传入，模块私有const FS*借用boot长期对象；BuiltinFileSystem加initialized()只读getter以拒绝未初始化绑定，重复绑定失败保持。boot仍私有拥有FS，不公开scheduler/FS全局。新增用户包装、Make对象与worker正常7+11读取about日志；DEMO RX3962接近一页，勿往main塞功能或扩loader布局。
+
+独立代理只读审查无范围/生命周期阻塞。仅新增任务文档和索引/记忆；未改产品、未运行B20功能/构建验证、未提交推送。核心由作者实现，助手完成后接宿主/隔离真实U读取及原正常资源链P0；不默认重跑500压力/追加矩阵。下一步作者先建接口与一次配置/getter，再写桥接主体，之后统一接boot/ABI/worker。三题留功能/P0后一次收尾。
+
+## B19功能、全部既定P0及三题归档完成，本批收尾（2026-11-13）
+
+作者已前移ELF整数范围检查至files[]构造前，并补[fs] ELF lookup/read OK。最终正常QEMU25项全过：实际read为4/4/18字节、about精确输出、registry真实span来自lookup、FS路径零PMM；原双WORKER退出23/37、父0、五份各7页/35合法free/运行alloc21/净恢复14、reap3零PMM及末尾两S ticks保持。完整探针构建无诊断/无UND，84正式源配置在验证期间hash保持；25秒由runner外部SIGTERM，非内核关机。
+
+此前真实FS宿主7组/原suite与500轮压力均通过。两阶段之间仅作者boot检查顺序/日志变化，FS头/实现与其余正式源未变；最终正常探针覆盖最新boot，不重复压力或追加故障矩阵。统一证据.cache/batch19-final-20261113/summary.json，各阶段results及压力目录保留。
+
+B19第10节记录执行路径/证据/限制，第11节已逐字保留作者三题原答并集中澄清/给修正版：span复制指针+长度，FS对象保证返回记录寿命、提供者保证底层内容寿命；未知lookup为nullptr而空文件有记录/read0；独立PA使counter私有，loader不只读字节，还分配/复制/清BSS/设权限映射。无需重答，索引同步，本批学习收尾。下一阶段按路线分批补路径入口/打开文件状态；具体下一批尚待交付，不自动代写。后半重复范围检查仅冗余；本轮只更新归档，未改产品/重复测试/提交推送。
+
+## 历史阶段：B19主体/宿主7组及500轮压力已过，boot最后两项待作者收尾（2026-11-13，已由上节完成）
+
+作者已把FS对象加入主Make，boot三文件登记/lookup、两个4字节ELF magic及about18字节按长度打印、images从lookup bytes配置均已接好。make -j4无诊断。当前唯一实质预检顺序缺口：end>start检查仍在files[]构造/读取之后，须移到4个uintptr_t变量之后、files[]之前；另补原任务约定的[fs] ELF lookup/read OK日志在三文件循环结束后。已集中告知，未代改产品；未宣告B19完成/未下发三题。
+
+协作者新增test/test_builtin_fs.cpp七组实际模块用例，并接test/CMakeLists、test_main、README；make test及默认make test-stress通过：初始化事务/重试/末条异址同内容重复/描述复制/指针保持/路径127与128/空文件/二进制/短读尾哨兵/分段/EOF/SIZE_MAX/空目标均过，不伪造LONGMAX非法span。500轮真实压力2000worker、1000spawn/1000fork/125exec/125fault/500满槽，alloc18375/free18382，4.35s，原逐轮检查通过。84正式源/配置hash保持。证据.cache/batch19-final-20261113/host-stress/results.json及.cache/task-table-stress/20261113-225039-30/。
+
+正常资源/FS来源只读探针已准备.cache/batch19-final-20261113/qemu-normal/{run_probe.py,probe.cpp,probe.h,observers.cpp}，尚未执行最终正常P0；不悄悄修副本跳过作者两项收尾。待作者补完后通知address_space_qemu继续，核3次read/FS零PMM/registry真实span来源及原35free/21alloc/reap3/双worker生命周期；无需重复宿主/压力或追加OOM矩阵。无本轮提交推送。
+
+## B19 init/lookup两处已修，boot读取草稿需调整（2026-11-13）
+
+实读文件模块：component_start已为1、重复路径均比较输入files、lookup成员作用域及const/有效记录循环已正确。boot新增文件登记/lookup草稿存在四点：链接器start/end仍直接作指针减法，应将后面已存在的uintptr_t转换/end>start检查前移并用整数差构造span；destination默认span无存储会直接读0，应4字节真实数组；ELF magic从offset0读，不是4；应result->read_at而非files->（后者总指首记录）。后续about按返回长度输出及原images[]改lookup记录bytes仍待接，本次仅审查/指导，未代改产品或宣告P0。
+
+## B19 init草稿与lookup接续，发现两处索引错误（2026-11-13）
+
+作者init已采用全预检/记录赋值/最后状态，但实际is_vaile_path写component_start=-1，应为1；size_t负值变极大，首组件长度/索引错误，//等输入可触发越界。重复检查写paths_equal(files[i].path,file_[j].path)，误比尚未提交的成员表，应两边均为输入files。集中提示待作者修，未代改产品/未运行功能测试。
+
+lookup当前写成namespace自由函数，需定义BuiltinFileSystem::lookup(span) const noexcept，先!initialized_或路径无效返回nullptr，再遍历file_count以paths_equal对比file_[i].path，命中返回成员记录借用地址，否则nullptr。沿用当前helper拼写is_vaile_path，不擅自批量改名。原任务范围/P0保持；Make仍未接此草稿，不能把主线零警告当作它已通过。
+
+## DeepSeek优化清单只读核对，尚未授权实施（2026-11-13）
+
+用户转贴外部建议，不把其中“先做1+2吗”当作用户改动指令。本轮与两内部审查代理只读核对，产品未改/未跑测试。SPIE三处重复属实，但trap.h没有SSTATUS宏；若做应新建合适的C/C++架构状态位头，不是直接include已有定义。registry的g_image/g_elf_layout说法过时，实际已有两项g_programs+共同配置、spawn纯编排；再封装对象可选非急需。
+
+copy_readable_user和copy_writable_user除权限/方向外，后者多端点bit38同半区预检；try_add只保证端点有效，不能当完整区间同半区。盲合并bool方向+独立flags可能配错权限/丢const或改变错误前缀，非“纯收益零风险”；如日后做保留类型入口、权限随方向内部绑定，原宿主复制边界+正常QEMU WRITE/GET_TIME/WAITPID复验，不能因串口输出不变就略过QEMU。
+
+kernel_panic已有span/array断言引用，不能推断未统一仅因脚本前缀；实际panic不清SIE/不切根/不释放，统一会改输出，不能替换idle等正常wfi。release_or_panic若后续抽取仅限候选cleanup，保留EXEC提交失败/loader回滚失败fatal与错误信息/归属/调用次数。TaskTable双遍历及Process全槽空检查应保留，较大拆分暂缓。
+
+check-objs方向合理但应可选，由Make传已展开OBJS，限定kernel/drivers/lib的.c/.cpp/.S，识别追加/重复/有意未启用项；B19 FS草稿未入Make是计划阶段，不能盲报漏文件或自动接线。不自动glob；对象名单对齐不证明编译器/顺序/incbin依赖正确。建议优先完成B19，若穿插维护只做共享位定义与可选对象审计，复制/停机/registry重构另批；这是协作者建议，非用户已确认的新安排。
 
 ## 夜间GitHub检查点：B18完成，保留B19当前草稿（2026-11-13）
 

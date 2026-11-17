@@ -30,7 +30,9 @@ public:
 
     int init(std::span<const BuiltinFile> files) noexcept;
     const BuiltinFile* lookup(std::span<const char> path) const noexcept;
-
+    bool initialized() const noexcept {
+        return initialized_;
+    }
 private:
     BuiltinFile file_[kCapacity]{};
     size_t file_count{};
