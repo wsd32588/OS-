@@ -8,9 +8,10 @@ struct Sv39PageTable;
 struct UserAddressSpace;
 struct UserMemoryLayout;
 
+namespace tinyos::fs { struct BuiltinFile; }
 namespace tinyos {
 struct BUiltinProgramImage{
-    std::span<const unsigned char> bytes{};
+    const fs::BuiltinFile* file{};
 };
 
 int configure_builtin_programs(
@@ -24,6 +25,11 @@ int prepare_builtin_user_space(
     UserAddressSpace& output,
     uintptr_t& entry_out,
     uintptr_t& stack_top_out);
+
+int find_builtin_program(
+    const fs::BuiltinFile& file, uint64_t& program_id_out
+) noexcept;
+
 }
 
 #endif

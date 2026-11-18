@@ -1,6 +1,6 @@
 # TinyOS 改造批次索引
 
-更新：2026-11-17。这里的编号只用于 TinyOS 改造线，独立于 [rCore 学习批次](../../experiments/rcore-learning/README.md)。
+更新：2026-11-18。这里的编号只用于 TinyOS 改造线，独立于 [rCore 学习批次](../../experiments/rcore-learning/README.md)。
 
 每个完整批次只使用一份文档，在其中持续维护任务、接口、修改记录、验证和问答。总路线见 [TINYOS_EVOLUTION.md](../TINYOS_EVOLUTION.md)。
 
@@ -36,13 +36,19 @@
 | [BATCH26](BATCH26_CONSOLE_DEVICE_SERVICE.md) | 2026-11-16 | 长期控制台设备与服务，功能/P0及三题归档完成 |
 | [BATCH27](BATCH27_CONSOLE_FILE_DESCRIPTORS.md) | 2026-11-16—17 | 控制台FD与用户读写，功能/P0及三题归档完成 |
 | [BATCH28](BATCH28_STANDARD_STREAMS.md) | 2026-11-17 | 标准0/1/2与fresh新进程，功能/P0及三题归档完成 |
-| [BATCH29](BATCH29_PATH_EXEC.md) | 2026-11-17起 | 按路径执行内置程序，完整任务已交付，待作者实现 |
+| [BATCH29](BATCH29_PATH_EXEC.md) | 2026-11-17—18 | 按路径执行内置程序，P0通过，三题已归档 |
+| [BATCH30](BATCH30_USER_SHELL.md) | 2026-11-18 | 最小用户态 shell，P0通过，三题已归档 |
+| [BATCH31](BATCH31_EXEC_ARGUMENTS.md) | 待实现 | 路径 exec 将 argc 和 argv 传入新镜像 |
 
-最近完整归档 **BATCH28**：标准0/1/2与fresh新进程功能、全部既定P0及三题集中澄清已收尾。
+最近完整归档 **BATCH30**。最小用户态 shell、既定 P0 和三题集中澄清均已完成。
 
 ## 当前批次与近期归档
 
-[BATCH29：按路径执行内置程序](BATCH29_PATH_EXEC.md)——完整任务已交付，待作者实现。
+[BATCH31 exec 参数传递](BATCH31_EXEC_ARGUMENTS.md) 已交付接口、栈布局和固定 P0。先完成旧用户参数到新用户栈的交接，shell 分词留到下一批。
+
+[BATCH30 用户态 shell](BATCH30_USER_SHELL.md) 的实现与固定 P0 已通过，三题已归档。正式前台命令循环、资源验收和原答见第 9—10 节。
+
+[BATCH29：按路径执行内置程序](BATCH29_PATH_EXEC.md)——路径执行、固定P0及头文件复验通过，原三题已归档，见第13—14节。
 新EXEC_PATH19安全复制路径→精确lookup→永久文件记录身份映射程序编号→复用原exec；成功保持Task/ID/FD，失败旧程序继续。
 main新增e执行/bin/worker，worker通过保留的stdout输出；不叠加shell/argv/路径SPAWN。接口/不变量/固定P0/三题见当批。
 

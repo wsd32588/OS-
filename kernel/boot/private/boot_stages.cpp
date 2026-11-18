@@ -271,8 +271,8 @@ void boot_start_user(
     }
 
     const tinyos::BUiltinProgramImage images[] = {
-        {demo_file->bytes},
-        {worker_file->bytes}
+        {demo_file},
+        {worker_file}
     };
     const UserMemoryLayout memory_layout = {
         .code_address = DEMO_USER_CODE_ADDRESS,

@@ -1,12 +1,16 @@
 # TinyOS 改造路线图
 
-更新：2026-11-17。
+更新：2026-11-18。
 
 本文件只维护路线、批次入口和仍然有效的限制。每个完整批次使用一份独立文档，目标、接口、修改、验证和问答都在对应文件中持续更新。
 
 ## 当前状态
 
-当前[BATCH29：按路径执行内置程序](tinyos/BATCH29_PATH_EXEC.md)完整任务已交付，待作者实现。
+[BATCH31 exec 参数传递](tinyos/BATCH31_EXEC_ARGUMENTS.md) 已交付任务，待实现。通过新的路径 exec 入口把有界 argv 搬入新镜像的用户栈，沿用原数值参数 ABI，shell 分词留到下一批。
+
+[BATCH30 用户态 shell](tinyos/BATCH30_USER_SHELL.md) 已通过实现和固定 P0，三题已归档。正式 QEMU 验证前台命令经 fork、路径 exec 和精确 waitpid 后返回提示符，退出时回收页和文件引用。
+
+最近[BATCH29：按路径执行内置程序](tinyos/BATCH29_PATH_EXEC.md)路径执行、固定P0及头文件复验通过，三题已归档，见第13—14节。
 路径复制/lookup/文件记录身份→既有程序ID→原exec事务，新增19号ABI；正常user增加e→worker，经保留的stdout输出。
 限定已登记两ELF，不叠加shell/argv/路径SPAWN；固定验收与原三题集中在当批。
 

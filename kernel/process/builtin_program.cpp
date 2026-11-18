@@ -1,6 +1,7 @@
 #include "process/builtin_program.hpp"
 
 #include "drivers/uart.h"
+#include "fs/builtin_fs.hpp"
 #include "mm/address.hpp"
 #include "mm/user_loader.h"
 #include "mm/user_address_space.h"
@@ -9,7 +10,7 @@ namespace {
 constexpr size_t kBuiltinProgramCount = 2;
 
 struct BuiltinProgramRecord {
-    std::span<const unsigned char> bytes{};
+    const fs::BuiltinFile* file{};
     UserElfLayout layout{};
 };
 
@@ -60,16 +61,23 @@ int configure_builtin_programs(
 
     UserElfLayout parsed_layouts[2]{};
 
+    const fs::BuiltinFile* demo_file = images[0].file;
+    const fs::BuiltinFile* worker_file = images[1].file;
+
+    if (demo_file == nullptr || worker_file == nullptr || demo_file == worker_file) {
+        return -1;
+    }
+
     for (size_t i = 0; i < images.size(); ++i) {
         const auto& image = images[i];
 
-        if (image.bytes.empty()) {
+        if (image.file->bytes.empty()) {
             return -1;
         }
 
         const int result = user_elf_parse(
-            image.bytes.data(),
-            image.bytes.size(),
+            image.file->bytes.data(),
+            image.file->bytes.size(),
             &parsed_layouts[i]);
 
         if (result != USER_ELF_OK) {
@@ -84,7 +92,7 @@ int configure_builtin_programs(
 
     for (size_t i = 0; i < images.size(); ++i) {
         g_programs[i] = BuiltinProgramRecord{
-            .bytes = images[i].bytes,
+            .file = images[i].file,
             .layout = parsed_layouts[i]
         };
     }
@@ -116,8 +124,8 @@ int prepare_builtin_user_space(
 
     const int load_result = user_memory_load_elf(
         output.root,
-        program.bytes.data(),
-        program.bytes.size(),
+        program.file->bytes.data(),
+        program.file->bytes.size(),
         &program.layout,
         &g_memory_layout,
         &output.user_memory);
@@ -137,5 +145,20 @@ int prepare_builtin_user_space(
     stack_top_out = g_stack_top;
 
     return SV39_OK;
+}
+int find_builtin_program(
+    const fs::BuiltinFile &file, uint64_t &program_id_out
+) noexcept {
+    if (g_root == nullptr) {
+        return -1;
+    }
+    for (size_t i = 0; i < kBuiltinProgramCount; ++i) {
+        if (g_programs[i].file == &file) {
+            program_id_out = i;       // 0 或 1
+            return 0;
+        }
+    }
+    
+    return -1;
 }
 }

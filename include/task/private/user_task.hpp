@@ -21,4 +21,7 @@ void finish(TaskTable& table, task& current, const trap_frame& frame,
             const Sv39PageTable* kernel_root, int reaper_id,
             TaskExitReason reason, long status);
 int find_reaper(const TaskTable& table, int reaper_id) noexcept;
+int exec_path(
+    task& current, trap_frame& frame, const Sv39PageTable* kernel_root,
+    uintptr_t path_address, uint64_t path_length, uintptr_t argument);
 }

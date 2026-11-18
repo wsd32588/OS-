@@ -10,6 +10,7 @@
 #include "task/private/user_task.hpp"
 #include "fs/file_syscall.hpp"
 
+
 namespace {
 constinit tinyos::TaskTable g_task_table{};
 }
@@ -476,7 +477,6 @@ int sched_fork_current(trap_frame* frame) {
         g_task_table, *parent, *frame);
 }
 
-
 int sched_exec_current(
     struct trap_frame* frame,
     uint64_t program_id,
@@ -493,6 +493,24 @@ int sched_exec_current(
 
     return tinyos::user_task::exec(*current,
         *frame, g_kernel_root, program_id, user_argument);
+}
+
+int sched_exec_path(
+    struct trap_frame* frame, uintptr_t path_address,
+    uint64_t path_length, uintptr_t user_argument
+) {
+    if (!supervisor_interrupts_disabled()) {
+        return -1;
+    }
+    task* current = current_user_task(frame);
+    
+    if (current == nullptr) {
+        return -1;
+    }
+    return tinyos::user_task::exec_path(
+        *current,
+        *frame, g_kernel_root,
+        path_address, path_length, user_argument);
 }
 
 int sched_configure_user_reaper(int task_id) {

@@ -298,7 +298,17 @@ struct trap_frame* syscall_handle(
         break;
     }
     case SYSCALL_EXEC_PATH: {
-        
+        uintptr_t path_address = frame->a0;
+        uint64_t path_length = frame->a1;
+        uintptr_t user_argument = frame->a2;
+
+        if ((uint64_t)sched_exec_path(
+            frame, path_address,
+            path_length, user_argument) != 0) {
+            frame->a0 = (uint64_t)(long)(-1);
+        }
+
+        break;
     }
     default:
         frame->a0 = (uint64_t)-1;

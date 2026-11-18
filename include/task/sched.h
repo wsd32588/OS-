@@ -41,6 +41,10 @@ int sched_fork_current(struct trap_frame* frame);
 
 int sched_exec_current(struct trap_frame* frame, uint64_t program_id, uintptr_t user_argument);
 
+int sched_exec_path(
+    struct trap_frame* frame, uintptr_t path_address,
+    uint64_t path_length, uintptr_t user_argument);
+
 int sched_configure_user_reaper(int task_id);
 
 int task_create_user(

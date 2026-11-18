@@ -1,6 +1,47 @@
 # TinyOS 项目记忆
 
-最后更新：2026-11-17
+最后更新：2026-11-18
+
+## B31 exec 参数传递任务已交付（2026-11-18）
+
+B30 已收尾。B31 先做 `user_exec_path_args`（20 号），从旧根取得最多四个 C 字符串（每项含 NUL 最多 64 字节），在提交前写入候选用户栈，入口 a1/a2 交付 argc/argv。原数值 a0 和正式 shell 保留现有路径，shell 分词留给下一批。接口、失败边界和固定 P0 见 `docs_from_riscv/tinyos/BATCH31_EXEC_ARGUMENTS.md`。核心由作者实现，协作者集中审查和验证，当前仅交付文档。
+
+## B30 shell、固定P0及三题已归档（2026-11-18）
+
+B30第10节保留三题原答与澄清。父shell保留原镜像、等待前台子；fork复制自己的路径BSS及length，继承FD引用是另一条机制。waitpid的a0是实际收集的原子ID，finish写内核退出状态，wait复制到用户result.status后reap。容量检查拒第128字节，discard读到行尾是维护命令边界；外层skip_lf跨等待保留，user_read取字节后由分支吞掉紧邻LF。固定P0与正式源保持，第9节存证。B30收尾。
+
+## B30正式shell及固定P0通过时的验证记录（2026-11-18）
+
+作者把WOULD_BLOCK改为yield成功后重试，仅精确子ID完成等待，恢复整行discard。`.cache/batch30-final-20261118/summary.json` 汇总双profile无警告/未解析、137宿主/3CTest、默认kdbg36、进程回归27、正式shell13全过。shell RX1244、RW127纯BSS，worker RX240/RW27，空间各6页。实际六次提示符均无待收孩子，fork3/exec成功2/拒绝1/reap3，返回0/127/0，父Task/Process/root/FD保持。运行30申请36释放、净恢复boot6、各根最后、退出0池0/两idle S。108正式源前后匹配。B30第9节存证，原三题后来于第10节归档。
+
+## B30 shell正常串口交互复查通过，分支待修（2026-11-18）
+
+当前保存的main已修集中长度、127上限和空行。隔离user构建无警告，RX1213/RW127=BSS，真实QEMU空CRLF/两次worker/缺失/128字节拒绝/exit的串口输出匹配。纯ASCII asd实际走exec failed，作者日志中的invalid line未能定位触发字节。其余既定待修为fork负值无条件continue、exec失败exit127、wait异常只报一次再yield停留、正常stdout检查及重复discard清理。证据.cache/batch30-review-20261118/transcript-results.json，B30第8节；未执行完整资源验收。
+
+## B30 shell草稿能运行worker，集中审查待修（2026-11-18）
+
+隔离user构建通过，RX1100/RW168，编译有长度符号比较与旧message未使用告警。QEMU实证worker/exit正常，空行与缺失路径均出现截断`[shell]`。主因write_line对指针取sizeof得固定7，空行缺continue。其余既定项是127上限、fork失败无条件continue、子exec返回统一诊断并exit127、wait异常只报一次再yield停留、正常stdout写入检查。见B30第7节，核心由作者改，完整P0尚未运行。
+
+## B30用户态shell完整任务已交付（2026-11-18）
+
+作者要求进入下一批。BATCH30_USER_SHELL.md限定作者只改user/main.c，用现有stdin/stdout、127字节有界行、exit内置命令与fork→exec_path→waitpid，实现最小前台shell。CR/LF/CRLF跨等待去重，非法/超长整行丢弃；child失败诊断并exit127，父按fork ID reap后才读下一条，reaper不得带未收集孩子退出。保留原worker与kdbg，shell的可写LOAD和一页RX按实测检查。固定P0由协作者承担，三题在实现验收后收尾。B29保持归档，未代写产品。
+
+## B29路径执行、固定P0与三题归档完成（2026-11-18）
+
+B29第14节保留作者三段原答与集中澄清。路径来自调用者自己的旧用户空间，复制后查长期FS成员。合法ELF还须命中已登记记录身份，未新增执行位权限系统；boot局部files元素与lookup成员当时就异址，返回后还会悬空。失败旧sepc+4/a0=-1，成功a0是新镜像入口参数，内核exec返回0仅供分发判断。准备失败时在当前调用者旧用户根仍活动的情况下回收从未激活的候选；栈上仅候选描述。成功按内核根→清旧空间→adopt/换现场→新根顺序，同Task/Process/ID/FD。既定验证与头文件复验保持，第13节有证据。本轮只更新文档，B29收尾。
+
+## B29路径执行与固定P0通过时的验证记录（2026-11-18）
+
+作者已补19号分支break。`.cache/batch29-final-20261118/summary.json` 汇总双profile与接口构建、137宿主/3CTest、registry16、正式e23/q19/kdbg36、生命周期13、旧进程回归27全通过，108文件哈希一致。正式e保Task/FD、旧新空间各6页按顺序释放、退出0池0。隔离九拒绝零PMM，fork共享0/1/3含空槽2，首次合法路径准备第4次PMM受控NULL，旧satp下归还3页根最后，旧程序继续后同路径重试，用户worker收到17，父收集17且共享偏移保持。全组15成功申请/21释放，净恢复boot6。
+作者已删掉头文件内层重复声明 `namespace tinyos::fs`，消除 `tinyos::tinyos::fs` 对限定查找的遮蔽。与运行快照逐文件核对，唯一变化是删该行。宿主/RV64限定名探针与双profile构建及符号检查通过，见 `.cache/batch29-final-20261118/build/header-fix-results.json`。第13节记录验证范围，原三题后来于第14节归档。
+
+## B29正式e已启动worker，19号分支仍缺break（2026-11-18）
+
+作者已修路径长度、registry 判空/拒重复、SIE0、main 错误出口和 worker stdout。隔离 user 构建成功，QEMU 按 e 实际出现 worker 输出。19 号分支已仅失败写 a0，但仍落入 default，成功现场的参数会被覆盖。worker 忽略参数，演示输出无法发现该问题。B29 第12节记复查，补 break 后续既定 P0。
+
+## B29首次路径执行失败已定位，待作者修正（2026-11-18）
+
+当前 user profile 隔离构建成功，真实 QEMU 输入 e 重现 I/O failed、无 worker 输出，q 对照正常 bye。`exec_path` 复制 11 字节路径却用 126 字节 span，补零触发 FS 拒绝；入口需检查 path_length 1—127，避免越过内核缓冲。19 号 case 无条件写 a0 且缺 break，构建报告 fallthrough。剩余既定接线见 B29 第12节：SIE0、registry 判空与拒绝重复记录、worker 用 stdout 及 main 的 exec 返回处理。本轮源码只读，尚未执行完整 P0。
 
 ## 本地Git检查点：B28完成，保留B29接口草稿（2026-11-17）
 
