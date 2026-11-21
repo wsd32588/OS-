@@ -1,12 +1,26 @@
 # TinyOS 改造路线图
 
-更新：2026-11-18。
+更新：2026-11-21。
 
 本文件只维护路线、批次入口和仍然有效的限制。每个完整批次使用一份独立文档，目标、接口、修改、验证和问答都在对应文件中持续更新。
 
 ## 当前状态
 
-[BATCH31 exec 参数传递](tinyos/BATCH31_EXEC_ARGUMENTS.md) 已交付任务，待实现。通过新的路径 exec 入口把有界 argv 搬入新镜像的用户栈，沿用原数值参数 ABI，shell 分词留到下一批。
+[BATCH38 读取超级块与校验磁盘布局](tinyos/BATCH38_SUPERBLOCK_LAYOUT.md) 已交付任务。先从扇区 `0` 读取 v1 记录，验证容量并计算四个区域的范围。
+
+[BATCH37 单槽块缓存与显式写回](tinyos/BATCH37_SINGLE_SLOT_BLOCK_CACHE.md) 已完成实现、固定 P0 和三题归档，见第 6、7 节。
+
+[BATCH36 向 QEMU VirtIO 块设备写入扇区](tinyos/BATCH36_VIRTIO_BLOCK_WRITE.md) 已完成实现、固定 P0 和三题归档。临时镜像验证写入范围和只读拒绝，见第 6、7 节。
+
+[BATCH35 从 QEMU VirtIO 块设备读取扇区](tinyos/BATCH35_VIRTIO_BLOCK_READ.md) 已通过固定 P0 并归档三题。启动探针确认两次扇区读使用同一队列、越界请求在提交前返回，以及无盘时继续启动。见第 5、7 节。
+
+[BATCH34 shell 的标准输入重定向](tinyos/BATCH34_INPUT_REDIRECTION.md) 已完成实现、固定 P0 和三题归档。正式 QEMU 验证 `< 路径` 只改绑子进程的 FD 0，父 shell 继续读控制台，成功和失败路径均回收。见第 7—8 节。
+
+[BATCH33 用 dup2 将打开文件绑定到指定 FD](tinyos/BATCH33_DUP2.md) 已完成实现、固定 P0 和三题归档。真实 QEMU 验证子进程改绑 stdin 后跨 exec 继续读文件，父进程的控制台绑定保持，见第 7—8 节。
+
+[BATCH32 shell 分词与前台命令参数](tinyos/BATCH32_SHELL_ARGUMENTS.md) 已完成实现、固定 P0 和三题归档。正式 shell 按 ASCII 空格分词，子进程通过 20 号执行，worker 输出额外参数。真实 QEMU 的十组串口输入和四次前台收集均通过，见第 8—9 节。
+
+[BATCH31 exec 参数传递](tinyos/BATCH31_EXEC_ARGUMENTS.md) 已通过全部固定 P0 并归档三题。真实 QEMU 验证参数拒绝后旧程序继续、合法重试保持身份和 FD、旧新空间完整回收，见第 7—8 节。
 
 [BATCH30 用户态 shell](tinyos/BATCH30_USER_SHELL.md) 已通过实现和固定 P0，三题已归档。正式 QEMU 验证前台命令经 fork、路径 exec 和精确 waitpid 后返回提示符，退出时回收页和文件引用。
 
@@ -156,6 +170,22 @@ MMU 是 CPU 硬件。软件内存子系统按分配器、页表、用户内存�
 - 独立语言实验仍在 [experiments/cpp-rust](../experiments/cpp-rust/README.md)；其旧构建路径复用前需重新核对。
 
 ## 后续方向
+
+### rCore 第 6 章存储后端
+
+TinyOS 当前的普通文件来自内核内置的只读数据。完成第 6 章的存储后端时，先按块编号访问磁盘，
+然后才能解释磁盘上的 inode 和目录项。继续这个方向时，可以按以下顺序分批推进。
+
+1. 定义块读接口，先让 TinyOS 在 QEMU 中从一张测试磁盘镜像读出已知扇区，并校验返回的字节。已在 [BATCH35](tinyos/BATCH35_VIRTIO_BLOCK_READ.md) 完成。
+2. [BATCH36](tinyos/BATCH36_VIRTIO_BLOCK_WRITE.md) 已完成单扇区写入与读回。[BATCH37](tinyos/BATCH37_SINGLE_SLOT_BLOCK_CACHE.md) 已完成单槽块缓存、显式写回和换槽失败时的数据保留。
+3. 定义磁盘布局。[BATCH38](tinyos/BATCH38_SUPERBLOCK_LAYOUT.md) 先做超级块与区域边界。后续由位图管理空闲块和 inode，再定义磁盘 inode 中的文件大小与数据块位置。
+4. 先做根目录项查找，让文件名关联到磁盘 inode。rCore 第 6 章的基础实现使用单层根目录，
+   多级子目录可以在根目录查找验证后单独扩展。
+5. 实现普通文件创建、写入和重新打开，并验证重启后仍能读取写入的数据。然后把磁盘文件接入现有 FD 接口。
+
+[rCore 文件与目录接口](https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter6/1fs-interface.html)、
+[rCore easy-fs](https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter6/2fs-implementation.html)、
+[rCore 块设备与内核接入](https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter6/3using-easy-fs-in-kernel.html)。
 
 BATCH11至BATCH21均已完成实现、既定P0与三题收尾；只读内置文件已接入原启动装载路径及用户显式偏移读取，内核打开文件模型已验证。
 

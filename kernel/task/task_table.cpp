@@ -86,25 +86,28 @@ const Process* TaskTable::process_at(int slot_index) const noexcept {
     return &process_[slot_index];
 }
 
-int TaskTable::recycle_dead_slot(int slot_index) {
+TaskTable::RecycleResult TaskTable::recycle_dead_slot(int slot_index) {
     if (slot_index < 0 || slot_index >= high_water_) {
-        return -1;
+        return RecycleResult::InvalidSlot;
     }
 
     task& target = tasks_[slot_index];
     if (target.state != TASK_DEAD) {
-        return -1;
+        return RecycleResult::WrongState;
     }
 
     if (process_[slot_index].reset() != 0) {
-        return -1;
+        /*
+         * A dead task that still owns Process resources is an invariant
+         * violation; the caller cannot fix it by retrying.
+         */
+        return RecycleResult::ProcessNotReset;
     }
 
     target.clear_metadata();
     target.state = TASK_UNUSED;
 
-    return 0;
-    return 0;
+    return RecycleResult::Ok;
 }
 
 int TaskTable::allocate(task** task_out) {

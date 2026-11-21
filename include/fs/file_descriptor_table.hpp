@@ -30,6 +30,8 @@ public:
         OpenFileAccess access = OpenFileAccess::ReadWrite) noexcept;
     int initialize_standard_stream(OpenFilePool& pool) noexcept;
     int inherit_from(OpenFilePool& pool, const FileDescriptorTable& source) noexcept;
+
+    int duplicate_to(OpenFilePool& pool, int source_fd, int target_fd) noexcept;
     void adopt(FileDescriptorTable& source) noexcept;
 private:
     OpenFile* entries_[kCapacity]{};

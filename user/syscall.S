@@ -117,4 +117,16 @@ user_exec_path:
     li a7, SYSCALL_EXEC_PATH
     ecall
     ret
+
+.global user_exec_path_args
+user_exec_path_args:
+    li a7, SYSCALL_EXEC_PATH_ARGS
+    ecall
+    ret
+
+.global user_dup2
+user_dup2:
+    li a7, SYSCALL_DUP2
+    ecall
+    ret
 .section .note.GNU-stack, "", @progbits

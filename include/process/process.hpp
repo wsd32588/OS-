@@ -40,6 +40,8 @@ public:
     int close_file(int fd) noexcept;
     void close_files() noexcept;
     int clone_file_descriptors(fs::FileDescriptorTable& output) const noexcept;
+
+    int duplicate_file(int source_fd, int target_fd) noexcept;
     void adopt_file_descriptors(fs::FileDescriptorTable& source) noexcept;
     bool files_empty() const noexcept;
 

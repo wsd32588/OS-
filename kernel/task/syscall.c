@@ -77,13 +77,13 @@ static long syscall_waitpid(
     
     TaskExitInfo info = {0};
     int match_id = -1;
-    int res = task_peek_exit(task_id, &info, &match_id);
+    TaskPeekResult res = task_peek_exit(task_id, &info, &match_id);
 
-    if (res == 0) {
-        return -2;
+    if (res == TASK_PEEK_RUNNING) {
+        return SYSCALL_ERR_WOULD_BLOCK;
     }
-    if (res != 1) {
-        return res;
+    if (res != TASK_PEEK_FOUND) {
+        return -1;
     }
 
     TaskExitResult result = {0};
@@ -136,7 +136,7 @@ static long syscall_reap(
     if (result >= 0) {
         return 1;
     }
-    if (result == -2) {
+    if (result == SYSCALL_ERR_WOULD_BLOCK) {
         return 0;
     }
     return -1;
@@ -308,6 +308,27 @@ struct trap_frame* syscall_handle(
             frame->a0 = (uint64_t)(long)(-1);
         }
 
+        break;
+    }
+    case SYSCALL_EXEC_PATH_ARGS: {
+        uintptr_t path_address = frame->a0;
+        uint64_t path_length = frame->a1;
+        uintptr_t argv_address = frame->a2;
+        uint64_t argc = frame->a3;
+        if (sched_exec_path_args(
+            frame,
+            path_address, path_length,
+            argv_address, argc) != 0) {
+            frame->a0 = (uint64_t)(long)(-1);
+        }
+        break;
+    }
+    case SYSCALL_DUP2: {
+        const long source_fd = (long)frame->a0;
+        const long target_fd = (long)frame->a1;
+
+        frame->a0 = (uint64_t)sched_duplicate_file(
+            frame, source_fd, target_fd);
         break;
     }
     default:

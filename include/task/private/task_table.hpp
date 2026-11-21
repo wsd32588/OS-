@@ -6,6 +6,14 @@ namespace tinyos {
 class TaskTable {
     public:
     static constexpr int kCapacity = 5;
+
+    enum class RecycleResult {
+        Ok,
+        InvalidSlot,
+        WrongState,
+        ProcessNotReset,
+    };
+
     constexpr TaskTable() = default;
 
     TaskTable(const TaskTable&) = delete;
@@ -23,7 +31,7 @@ class TaskTable {
     int find_slot(int task_id) const noexcept;
     int slot_of(const task* target) const noexcept;
     int allocate(task** task_out);
-    int recycle_dead_slot(int slot_index);
+    RecycleResult recycle_dead_slot(int slot_index);
 
     private:
     task tasks_[kCapacity]{};

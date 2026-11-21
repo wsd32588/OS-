@@ -17,6 +17,7 @@ void close_all_files(FileDescriptorTable& table) noexcept;
 int inherit_files(
     const FileDescriptorTable& source, FileDescriptorTable& output) noexcept;
 int prepare_standard_streams(FileDescriptorTable& output) noexcept;
+int duplicate_file(FileDescriptorTable& table, int source_fd, int target_fd) noexcept;
 }
 
 #endif

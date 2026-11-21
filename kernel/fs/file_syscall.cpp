@@ -152,6 +152,21 @@ long syscall_write_fd(
     );
 }
 
+long syscall_dup2(
+    Process &process,
+    long source_fd, long target_fd
+) noexcept {
+    const long capacity = static_cast<long>(FileDescriptorTable::kCapacity);
+    if (!file_service_ready() ||
+        source_fd < 0 || source_fd >= capacity ||
+        target_fd < 0 || target_fd >= capacity) {
+        return -1;
+    }
+
+    return process.duplicate_file(
+    static_cast<int>(source_fd), static_cast<int>(target_fd));
+}
+
 }
 
 extern "C" long fs_syscall_read_file(

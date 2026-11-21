@@ -91,6 +91,17 @@ int inherit_files(
     return output.inherit_from(g_open_files, source);
 }
 
+int duplicate_file(
+    FileDescriptorTable &table,
+    int source_fd, int target_fd
+) noexcept {
+    if (!file_service_ready()) {
+        return -1;
+    }
+
+    return table.duplicate_to(g_open_files, source_fd, target_fd);
+}
+
 int prepare_standard_streams(
     FileDescriptorTable& output
 ) noexcept {

@@ -24,6 +24,10 @@ extern "C" void kernel_main(unsigned long hart_id, const void* device_tree) {
     Sv39PageTable* kernel_root = boot_init_kernel_vm(device_tree);
     uint64_t satp_value = boot_enable_paging(kernel_root);
 
+#if TINYOS_BLOCK_PROBE
+    boot_probe_block_read();
+#endif
+
     boot_start_user(kernel_root, satp_value);
     boot_start_scheduler();
 

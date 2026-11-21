@@ -1,5 +1,6 @@
 #include "mm/user_address_space.h"
 
+#include "runtime/panic.h"
 #include "arch/riscv/vm_arch.h"
 #include "mm/address.hpp"
 #include "mm/pmm.h"
@@ -139,7 +140,6 @@ int user_address_space_clone(
     const UserAddressSpace* source,
     UserAddressSpace* output
 ) {
-
     if (source == nullptr ||
         output == nullptr ||
         source == output ||
@@ -153,7 +153,7 @@ int user_address_space_clone(
     for (const UserMemoryPage& page : output->user_memory.pages) {
         if (page.physical_page != nullptr ||
             page.virtual_address != 0) {
-                return  SV39_ERR_INVALID_ARGUMENT;
+            return SV39_ERR_INVALID_ARGUMENT;
         }
     }
 
@@ -172,7 +172,7 @@ int user_address_space_clone(
     }
 
     uint64_t page_flags[USER_MEMORY_MAX_PAGE]{};
-    
+
     for (size_t i = 0; i < source->user_memory.page_count; ++i) {
         const UserMemoryPage& page = source->user_memory.pages[i];
         uint64_t mapped_address = 0;
@@ -182,15 +182,18 @@ int user_address_space_clone(
                 page.virtual_address,
                 &mapped_address,
                 &page_flags[i]) != SV39_OK ||
-                mapped_address != reinterpret_cast<uintptr_t>(page.physical_page) ||
-                (page_flags[i] & SV39_PTE_U) == 0) {
-                return SV39_ERR_INVALID_ARGUMENT;
+            mapped_address != reinterpret_cast<uintptr_t>(page.physical_page) ||
+            (page_flags[i] & SV39_PTE_U) == 0) {
+            return SV39_ERR_INVALID_ARGUMENT;
         }
     }
 
-    const int result =
-        user_address_space_create(source->kernel_root,output);
-
+    /*
+     * 先把新地址空间构造在局部 candidate 里，成功后再发布给 output。
+     * 这样任何失败点都只需要跳到 out_release，调用方永远看不到半成品。
+     */
+    UserAddressSpace candidate{};
+    int result = user_address_space_create(source->kernel_root, &candidate);
     if (result != SV39_OK) {
         return result;
     }
@@ -199,20 +202,23 @@ int user_address_space_clone(
         const UserMemoryPage& source_page = source->user_memory.pages[i];
 
         void* new_page = pmm_alloc_page();
-
         if (new_page == nullptr) {
-            return SV39_ERR_NO_MEMORY;
+            result = SV39_ERR_NO_MEMORY;
+            goto out_release;
         }
 
-        UserMemory& memory = output->user_memory;
-        
-        memory.root = output->root;
-        memory.pages[memory.page_count] = UserMemoryPage {
+        /*
+         * 先记入 candidate，再复制和映射：
+         * 即使 map() 失败，out_release 也能释放这一个新页。
+         */
+        UserMemory& memory = candidate.user_memory;
+        memory.root = candidate.root;
+        memory.pages[memory.page_count] = UserMemoryPage{
             source_page.virtual_address,
             new_page
         };
-
         ++memory.page_count;
+
         const auto* source_bytes =
             static_cast<const unsigned char*>(source_page.physical_page);
         auto* destination_bytes =
@@ -222,17 +228,27 @@ int user_address_space_clone(
             destination_bytes[offset] = source_bytes[offset];
         }
 
-        const int map_result = memory.root->map(
+        result = candidate.root->map(
             source_page.virtual_address,
             reinterpret_cast<uintptr_t>(new_page),
             page_flags[i] & SV39_PTE_LEAF_FLAG_MASK);
-
-        if (map_result != SV39_OK) {
-            return map_result;
+        if (result != SV39_OK) {
+            goto out_release;
         }
     }
 
+    *output = candidate;
     return SV39_OK;
+
+out_release:
+    /*
+     * cleanup 失败说明页表/PMM 内部状态已经不一致，
+     * 此时不能把半成品交给调用方，直接 fail-stop。
+     */
+    if (user_address_space_release(&candidate) != SV39_OK) {
+        PANIC_KERNEL("clone rollback failed");
+    }
+    return result;
 }
 
 int user_address_space_release(UserAddressSpace* space) {

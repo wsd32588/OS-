@@ -49,6 +49,14 @@ SECTIONS
         *(.got .got.*)
     } :data
 
+    /*
+     * .bss 放进 RW 的 data PT_LOAD：
+     *   - 全局/静态对象必须可写；
+     *   - NOLOAD 不占 ELF 文件大小，运行时由 entry.S 清零；
+     *   - VirtIO 的 descriptor/avail/used/request 静态 DMA 内存也在这里，
+     *     所以这段必须可写，并且内核必须对它建立恒等映射，
+     *     设备拿到的 guest physical address 才和 CPU 指针数值一致。
+     */
     __bss_start = .;
 
     .bss (NOLOAD) : {
@@ -62,5 +70,5 @@ SECTIONS
 
     . = ALIGN(4096);
     __data_end = .;
-    __kernel_end = .;
+    __kernel_end = .;   /* PMM 分配起点；必须页对齐 */
 }

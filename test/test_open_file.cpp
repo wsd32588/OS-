@@ -234,6 +234,74 @@ void test_descriptor_bounds_capacity_and_reuse() {
     require_equal(capture(table, fixture.pool), closed, "close_all is idempotent");
 }
 
+void test_duplicate_to_shares_position_and_replaces_target_reference() {
+    Fixture fixture;
+    FileDescriptorTable table;
+    require_equal(table.open(fixture.pool, fixture.about()), 0, "open the source");
+    require_equal(table.open(fixture.pool, fixture.empty_file()), 1, "open a different target");
+    OpenFile* source = table.get(0);
+    OpenFile* old_target = table.get(1);
+
+    require_equal(
+        table.duplicate_to(fixture.pool, 0, 3),
+        3,
+        "duplicating to an empty slot returns the target FD"
+    );
+    require_equal(table.get(3), source, "empty target now points to the source object");
+    require_equal(source->reference_count(), std::size_t{2}, "the new slot retains one reference");
+    require_equal(fixture.pool.in_use(), std::size_t{2}, "duplicating allocates no open object");
+
+    require_equal(table.duplicate_to(fixture.pool, 1, 4), 4, "keep a reference to the old target");
+    require_equal(table.duplicate_to(fixture.pool, 0, 1), 1, "replace the occupied target");
+    require_equal(table.get(1), source, "replaced slot points to the source object");
+    require_equal(source->reference_count(), std::size_t{3}, "replacing retains the source once");
+    require_equal(table.get(4), old_target, "the other former target alias remains valid");
+    require_equal(
+        old_target->reference_count(),
+        std::size_t{1},
+        "only the replaced reference drops"
+    );
+    require_equal(fixture.pool.in_use(), std::size_t{2}, "both objects still have owners");
+    require_equal(table.get(3)->commit_read(6), 0, "advance the source position via an alias");
+    require_equal(table.get(1)->offset(), std::size_t{6}, "the replaced slot sees that position");
+    require(table.get(1)->can_read() && !table.get(1)->can_write(), "the alias remains read-only");
+
+    require_equal(table.close(fixture.pool, 0), 0, "close the original source FD");
+    require_equal(source->reference_count(), std::size_t{2}, "both aliases survive closing source");
+    require_equal(
+        table.get(3)->offset(),
+        std::size_t{6},
+        "closing the original preserves position"
+    );
+    table.close_all(fixture.pool);
+    require(table.empty(), "all descriptor references are closed");
+    require_equal(fixture.pool.in_use(), std::size_t{0}, "both objects are returned to the pool");
+}
+
+void test_duplicate_to_noops_and_rejections_preserve_state() {
+    Fixture fixture;
+    FileDescriptorTable table;
+    require_equal(table.open(fixture.pool, fixture.about()), 0, "open the source");
+    require_equal(table.open(fixture.pool, fixture.empty_file()), 1, "open a different target");
+    require_equal(table.get(0)->commit_read(2), 0, "give the source a nonzero position");
+    require_equal(table.duplicate_to(fixture.pool, 0, 3), 3, "establish a live alias");
+    const TableState before = capture(table, fixture.pool);
+
+    require_equal(table.duplicate_to(fixture.pool, 0, 0), 0, "valid same-FD call succeeds");
+    require_equal(table.duplicate_to(fixture.pool, 0, 3), 3, "same-object call succeeds");
+    require_equal(capture(table, fixture.pool), before, "no-op calls preserve the full table");
+
+    require_equal(table.duplicate_to(fixture.pool, 7, 1), -1, "empty source cannot replace target");
+    require_equal(table.duplicate_to(fixture.pool, 7, 7), -1, "empty same-FD call still fails");
+    require_equal(table.duplicate_to(fixture.pool, -1, 1), -1, "negative source fails");
+    const int capacity = static_cast<int>(FileDescriptorTable::kCapacity);
+    require_equal(table.duplicate_to(fixture.pool, 0, capacity), -1, "out-of-range target fails");
+    require_equal(capture(table, fixture.pool), before, "rejected calls preserve the full table");
+
+    table.close_all(fixture.pool);
+    require_equal(fixture.pool.in_use(), std::size_t{0}, "all references are returned to the pool");
+}
+
 void test_inheritance_shares_objects_and_preserves_holes() {
     Fixture fixture;
     FileDescriptorTable parent;
@@ -428,6 +496,12 @@ int test_open_file() {
              passed;
     passed = run("open file: descriptor bounds, full table and hole reuse",
                  test_descriptor_bounds_capacity_and_reuse) &&
+             passed;
+    passed = run("open file: dup2 shares position and replaces only the target reference",
+                 test_duplicate_to_shares_position_and_replaces_target_reference) &&
+             passed;
+    passed = run("open file: dup2 no-ops and rejected descriptors preserve state",
+                 test_duplicate_to_noops_and_rejections_preserve_state) &&
              passed;
     passed = run("open file: inheritance shares positions and preserves fd holes",
                  test_inheritance_shares_objects_and_preserves_holes) &&

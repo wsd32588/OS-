@@ -33,6 +33,10 @@ long user_read(long fd, void* destination, size_t length);
 long user_close(long fd);
 long user_write_fd(long fd, const void *source, size_t length);
 long user_exec_path(const char* path, size_t path_length, uintptr_t argument);
+long user_exec_path_args(
+    const char* path, size_t path_length,
+    const char* const* argv, size_t argc);
+long user_dup2(long source_fd, long target_fd);
 #ifdef __cplusplus
 [[noreturn]] void user_exit(long status);
 #else

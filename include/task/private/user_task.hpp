@@ -24,4 +24,8 @@ int find_reaper(const TaskTable& table, int reaper_id) noexcept;
 int exec_path(
     task& current, trap_frame& frame, const Sv39PageTable* kernel_root,
     uintptr_t path_address, uint64_t path_length, uintptr_t argument);
+
+int exec_path_args(
+    task& current, trap_frame& frame, const Sv39PageTable* kernel_root,
+    uintptr_t path_address, uint64_t path_length, uintptr_t argv_address, uint64_t argc);
 }

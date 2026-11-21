@@ -17,3 +17,13 @@ void* memset(void* destination, int value, size_t length) {
     }
     return destination;
 }
+
+int strlen(const char* ch_) {
+    int result = 0;
+
+    while (ch_ != NULL) {
+        ++result;
+        ch_++;
+    }
+    return result;
+}

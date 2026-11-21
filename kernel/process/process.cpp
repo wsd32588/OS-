@@ -60,6 +60,12 @@ void Process::adopt(UserAddressSpace& source) noexcept {
     source = {};
 }
 
+int Process::duplicate_file(
+    int source_fd, int target_fd
+) noexcept {
+    return fs::duplicate_file(files_, source_fd, target_fd);
+}
+
 void Process::record_exit(TaskExitInfo res) noexcept {
     exit_info_ = res;
 }

@@ -1,6 +1,6 @@
 # TinyOS 改造批次索引
 
-更新：2026-11-18。这里的编号只用于 TinyOS 改造线，独立于 [rCore 学习批次](../../experiments/rcore-learning/README.md)。
+更新：2026-11-21。这里的编号只用于 TinyOS 改造线，独立于 [rCore 学习批次](../../experiments/rcore-learning/README.md)。
 
 每个完整批次只使用一份文档，在其中持续维护任务、接口、修改记录、验证和问答。总路线见 [TINYOS_EVOLUTION.md](../TINYOS_EVOLUTION.md)。
 
@@ -38,13 +38,34 @@
 | [BATCH28](BATCH28_STANDARD_STREAMS.md) | 2026-11-17 | 标准0/1/2与fresh新进程，功能/P0及三题归档完成 |
 | [BATCH29](BATCH29_PATH_EXEC.md) | 2026-11-17—18 | 按路径执行内置程序，P0通过，三题已归档 |
 | [BATCH30](BATCH30_USER_SHELL.md) | 2026-11-18 | 最小用户态 shell，P0通过，三题已归档 |
-| [BATCH31](BATCH31_EXEC_ARGUMENTS.md) | 待实现 | 路径 exec 将 argc 和 argv 传入新镜像 |
+| [BATCH31](BATCH31_EXEC_ARGUMENTS.md) | 2026-11-18 | 路径 exec 传递 argc/argv，固定 P0 通过，三题已归档 |
+| [BATCH32](BATCH32_SHELL_ARGUMENTS.md) | 2026-11-18—19 | shell 分词与前台参数，固定 P0 通过，三题已归档 |
+| [BATCH33](BATCH33_DUP2.md) | 2026-11-19 | dup2 固定 P0 通过，三题已归档 |
+| [BATCH34](BATCH34_INPUT_REDIRECTION.md) | 2026-11-19—20 | shell 输入重定向，固定 P0 通过，三题已归档 |
+| [BATCH35](BATCH35_VIRTIO_BLOCK_READ.md) | 2026-11-20—21 | QEMU VirtIO 块设备只读接入，固定 P0 通过，三题已归档 |
+| [BATCH36](BATCH36_VIRTIO_BLOCK_WRITE.md) | 2026-11-21 | VirtIO 单扇区写入与读回，固定 P0 通过，三题已归档 |
+| [BATCH37](BATCH37_SINGLE_SLOT_BLOCK_CACHE.md) | 2026-11-21 | 单槽块缓存与显式写回，固定 P0 通过，三题已归档 |
+| [BATCH38](BATCH38_SUPERBLOCK_LAYOUT.md) | 2026-11-21 | 超级块解码与磁盘布局校验，任务已交付 |
 
-最近完整归档 **BATCH30**。最小用户态 shell、既定 P0 和三题集中澄清均已完成。
+最近完整归档 **BATCH37**。单槽块缓存、固定 P0 和三题集中澄清均已完成。
 
 ## 当前批次与近期归档
 
-[BATCH31 exec 参数传递](BATCH31_EXEC_ARGUMENTS.md) 已交付接口、栈布局和固定 P0。先完成旧用户参数到新用户栈的交接，shell 分词留到下一批。
+[BATCH38 读取超级块与校验磁盘布局](BATCH38_SUPERBLOCK_LAYOUT.md) 是当前批次。读扇区 `0`，逐字段解码并校验布局，成功后交付四个区域的范围。
+
+[BATCH37 单槽块缓存与显式写回](BATCH37_SINGLE_SLOT_BLOCK_CACHE.md) 已通过固定 P0 并归档三题。写回边界及故障保留旧槽见第 6 节，三题见第 7 节。
+
+[BATCH36 向 QEMU VirtIO 块设备写入扇区](BATCH36_VIRTIO_BLOCK_WRITE.md) 已通过固定 P0 并归档三题。写扇区后的完整镜像比较、只读拒绝和读写队列计数见第 6 节，理解收尾见第 7 节。
+
+[BATCH35 从 QEMU VirtIO 块设备读取扇区](BATCH35_VIRTIO_BLOCK_READ.md) 已通过固定 P0 并归档三题。S 态启动探针逐字节核对扇区 0、1，越界请求保留目标缓冲区，无盘继续启动。验收与三题澄清见第 5、7 节。
+
+[BATCH34 shell 的标准输入重定向](BATCH34_INPUT_REDIRECTION.md) 已通过固定 P0 并归档三题。真实 QEMU 的 8 组串口输入输出精确匹配，父 shell 控制台绑定保持。验收与原答见第 7—8 节。
+
+[BATCH33 dup2 与指定 FD 重绑定](BATCH33_DUP2.md) 已通过固定 P0 并归档三题。隔离 QEMU 验证子进程改绑 stdin 后在新镜像中从原偏移继续读文件，父进程控制台保持，见第 7—8 节。
+
+[BATCH32 shell 分词与前台命令参数](BATCH32_SHELL_ARGUMENTS.md) 已通过固定 P0 并归档三题。正式 QEMU 观察到 4 次 fork、4 次参数 exec 和 4 次收集，退出状态为 0、0、127、0。三题和验收报告见第 8—9 节。
+
+[BATCH31 exec 参数传递](BATCH31_EXEC_ARGUMENTS.md) 已通过固定 P0 并归档三题。三题及参数拒绝、合法重试、FD 和空间回收的真实 QEMU 结果见第 7—8 节。
 
 [BATCH30 用户态 shell](BATCH30_USER_SHELL.md) 的实现与固定 P0 已通过，三题已归档。正式前台命令循环、资源验收和原答见第 9—10 节。
 

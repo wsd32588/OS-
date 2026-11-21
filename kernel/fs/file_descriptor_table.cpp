@@ -162,4 +162,43 @@ int FileDescriptorTable::inherit_from(
     return 0;
 }
 
+int FileDescriptorTable::duplicate_to(
+    OpenFilePool& pool,
+    int source_fd, int target_fd
+) noexcept {
+
+    // 校验在Pool内，且不能为同一个文件
+    const int capacity = static_cast<int>(kCapacity);
+    if (source_fd < 0 || source_fd >= capacity ||
+        target_fd < 0 || target_fd >= capacity) {
+        return -1;
+    }
+    
+    // 获取文件
+    OpenFile* source_file = entries_[source_fd];
+    OpenFile* target_file = entries_[target_fd];
+
+    // 源文件非空且目标文件与源文件指向相同，可以直接返回目标fd
+    if (source_file != nullptr &&
+        source_file == target_file) {
+        return target_fd;
+    }
+
+    // 为目标槽取得一条源对象引用
+    if (!pool.retain(source_file)) {
+        return -1;
+    }
+
+    entries_[target_fd] = source_file;
+
+    // 目标槽原先为空，可以直接返回
+    if (target_file == nullptr) {
+        return target_fd;
+    }
+
+    pool.release(target_file);
+
+    return target_fd;
+}
+
 }

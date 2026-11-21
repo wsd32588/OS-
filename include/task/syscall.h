@@ -21,6 +21,8 @@
 #define SYSCALL_CLOSE           17
 #define SYSCALL_WRITE_FD        18
 #define SYSCALL_EXEC_PATH       19
+#define SYSCALL_EXEC_PATH_ARGS  20
+#define SYSCALL_DUP2            21
 #define SYSCALL_WRITE_MAX       256
 #define SYSCALL_READ_MAX        256
 #define SYSCALL_READ_FILE_MAX   SYSCALL_READ_MAX

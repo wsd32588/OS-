@@ -10,6 +10,11 @@ typedef struct Sv39PageTable Sv39PageTable;
 typedef struct UserAddressSpace UserAddressSpace;
 
 struct trap_frame;
+typedef enum TaskPeekResult {
+    TASK_PEEK_INVALID = -1,
+    TASK_PEEK_RUNNING = 0,
+    TASK_PEEK_FOUND = 1,
+} TaskPeekResult;
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,7 +23,7 @@ int sched_init(const Sv39PageTable* kernel_root);
 int task_create(void (*entry)(void));
 
 int scheduler_start(void);
-int task_peek_exit(
+TaskPeekResult task_peek_exit(
     int requested_id,
     TaskExitInfo* result_out,
     int* matched_id_out
@@ -45,6 +50,12 @@ int sched_exec_path(
     struct trap_frame* frame, uintptr_t path_address,
     uint64_t path_length, uintptr_t user_argument);
 
+int sched_exec_path_args(
+    struct trap_frame *frame,
+    uintptr_t path_address,uint64_t path_length,
+    uintptr_t argv_address, uint64_t argc
+);
+
 int sched_configure_user_reaper(int task_id);
 
 int task_create_user(
@@ -62,6 +73,10 @@ long sched_close_file(struct trap_frame* frame, long requested_fd);
 long sched_write_file(
     struct trap_frame* frame, long requested_fd,
     uintptr_t source_address, uint64_t length
+);
+
+long sched_duplicate_file(
+    struct trap_frame* frame, long source_fd, long target_fd
 );
 const Sv39PageTable* sched_current_user_root(void);
 

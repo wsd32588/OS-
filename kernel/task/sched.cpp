@@ -42,6 +42,15 @@ static void idle_entry(void) {
     }
 }
 
+[[noreturn]] static void sched_fatal(const char* reason) {
+    uart_puts("[sched] fatal: ");
+    uart_puts(reason);
+    uart_putchar('\n');
+    for (;;) {
+        asm volatile("wfi");
+    }
+}
+
 void task_exit(void)
 {
     if (current_task >= 0) {
@@ -65,28 +74,17 @@ static void change_page(const struct task* task) {
 
     if (task->kind == TASK_KIND_USER) {
         if (task->proc == nullptr) {
-            uart_puts("[Error] address of process is nullptr");
-            
-            for (;;) {
-                asm volatile("wfi");
-            }
+            sched_fatal("user task has no process");
         }
 
         root = task->proc->root();
-
         if (root == nullptr) {
-            uart_puts("[Error] user task has valid root");
-            // 内部状态错误：用户任务缺少私有根。
+            sched_fatal("user task has no root");
         }
     }
 
-    int res = sv39_activate(root);
-    if (res != SV39_OK) {
-        uart_puts(" change page failed");
-
-        for (;;) {
-            asm volatile("wfi");
-        }
+    if (sv39_activate(root) != SV39_OK) {
+        sched_fatal("activate page table failed");
     }
 }
 
@@ -351,19 +349,19 @@ static struct task* current_user_task_for_collection(void) {
     return current;
 }
 
-int task_peek_exit(
+TaskPeekResult task_peek_exit(
     int requested_id,
     TaskExitInfo* result_out,
     int* matched_id_out
 ) {
     if (requested_id < -1 ||
         result_out == nullptr || matched_id_out == nullptr) {
-        return -1;
+        return TASK_PEEK_INVALID;
     }
 
     const struct task* parent = current_user_task_for_collection();
     if (parent == nullptr) {
-        return -1;
+        return TASK_PEEK_INVALID;
     }
 
     bool has_matching_child = false;
@@ -387,15 +385,15 @@ int task_peek_exit(
         const TaskExitInfo& info = child.proc->exit_info();
         if (!child.proc->resources_empty() ||
             (info.reason != TASK_EXIT_REQUESTED && info.reason != TASK_EXIT_FAULT)) {
-            return -1;
+            return TASK_PEEK_INVALID;
         }
 
         *matched_id_out = child.task_id;
         *result_out = info;
-        return 1;
+        return TASK_PEEK_FOUND;
     }
 
-    return has_matching_child ? 0 : -1;
+    return has_matching_child ? TASK_PEEK_RUNNING : TASK_PEEK_INVALID;
 }
 
 
@@ -428,8 +426,12 @@ int task_reap(int task_id) {
         return -1;
     }
 
-    return g_task_table.recycle_dead_slot(target);
-
+    using RecycleResult = tinyos::TaskTable::RecycleResult;
+    const RecycleResult recycle_result = g_task_table.recycle_dead_slot(target);
+    if (recycle_result == RecycleResult::ProcessNotReset) {
+        sched_fatal("dead task still owns resources");
+    }
+    return recycle_result == RecycleResult::Ok ? 0 : -1;
 }
 struct trap_frame* sched_on_timer(
     struct trap_frame* frame
@@ -466,10 +468,18 @@ static struct task* current_user_task(struct trap_frame* frame) {
     return current_user_task_metadata();
 }
 
+static struct task* current_user_task_for_syscall(struct trap_frame* frame) {
+    if (!supervisor_interrupts_disabled()) {
+        return nullptr;
+    }
+
+    return current_user_task(frame);
+}
+
 
 int sched_fork_current(trap_frame* frame) {
-    task* parent = current_user_task(frame);
-    if (parent == nullptr || !supervisor_interrupts_disabled()) {
+    task* parent = current_user_task_for_syscall(frame);
+    if (parent == nullptr) {
         return -1;
     }
 
@@ -482,12 +492,8 @@ int sched_exec_current(
     uint64_t program_id,
     uintptr_t user_argument
 ) {
-    task* current = current_user_task(frame);
+    task* current = current_user_task_for_syscall(frame);
     if (current == nullptr) {
-        return -1;
-    }
-
-    if (!supervisor_interrupts_disabled()) {
         return -1;
     }
 
@@ -499,11 +505,7 @@ int sched_exec_path(
     struct trap_frame* frame, uintptr_t path_address,
     uint64_t path_length, uintptr_t user_argument
 ) {
-    if (!supervisor_interrupts_disabled()) {
-        return -1;
-    }
-    task* current = current_user_task(frame);
-    
+    task* current = current_user_task_for_syscall(frame);
     if (current == nullptr) {
         return -1;
     }
@@ -511,6 +513,33 @@ int sched_exec_path(
         *current,
         *frame, g_kernel_root,
         path_address, path_length, user_argument);
+}
+
+int sched_exec_path_args(
+    struct trap_frame *frame,
+    uintptr_t path_address,uint64_t path_length,
+    uintptr_t argv_address, uint64_t argc
+) {
+    task* current = current_user_task_for_syscall(frame);
+    if (current == nullptr) {
+        return -1;
+    }
+    return tinyos::user_task::exec_path_args(
+        *current, *frame, g_kernel_root,
+        path_address, path_length, argv_address, argc);
+}
+
+long sched_duplicate_file(
+    struct trap_frame *frame,
+    long source_fd, long target_fd
+) {
+    task* current = current_user_task_for_syscall(frame);
+    if (current == nullptr) {
+        return -1;
+    }
+
+    return tinyos::fs::syscall_dup2(
+        *current->proc, source_fd, target_fd);
 }
 
 int sched_configure_user_reaper(int task_id) {
@@ -576,12 +605,8 @@ static struct trap_frame* finish_user_task(
     TaskExitReason reason,
     long status
 ) {
-    struct task* task = current_user_task(frame);
+    struct task* task = current_user_task_for_syscall(frame);
     if (task == nullptr) {
-        return frame;
-    }
-
-    if (!supervisor_interrupts_disabled()) {
         return frame;
     }
     tinyos::user_task::finish(
@@ -629,8 +654,8 @@ long sched_open_file(
     struct trap_frame* frame,
     uintptr_t path_address, uint64_t path_length
 ) {
-    task* current = current_user_task(frame);
-    if (current == nullptr || !supervisor_interrupts_disabled()) {
+    task* current = current_user_task_for_syscall(frame);
+    if (current == nullptr) {
         return -1;
     }
     return tinyos::fs::syscall_open_file(
@@ -644,8 +669,8 @@ long sched_read_file(
     uintptr_t destination_address,
     uint64_t length
 ) {
-    task* current = current_user_task(frame);
-    if (current == nullptr || !supervisor_interrupts_disabled()) {
+    task* current = current_user_task_for_syscall(frame);
+    if (current == nullptr) {
         return -1;
     }
 
@@ -659,8 +684,8 @@ long sched_write_file(
     struct trap_frame* frame, long requested_fd,
     uintptr_t source_address, uint64_t length
 ) {
-    const task* current = current_user_task(frame);
-    if (current == nullptr || !supervisor_interrupts_disabled()) {
+    const task* current = current_user_task_for_syscall(frame);
+    if (current == nullptr) {
         return -1;
     }
 
@@ -675,8 +700,8 @@ long sched_close_file(
     struct trap_frame* frame,
     long requested_fd
 ) {
-    task* current = current_user_task(frame);
-    if (current == nullptr || !supervisor_interrupts_disabled()) {
+    task* current = current_user_task_for_syscall(frame);
+    if (current == nullptr) {
         return -1;
     }
 

@@ -25,6 +25,7 @@ long syscall_write_fd(
     uintptr_t source_address, uint64_t length
 ) noexcept;
 
+long syscall_dup2(Process& process, long source_fd, long target_fd) noexcept;
 }
 
 #endif

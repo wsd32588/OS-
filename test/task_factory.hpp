@@ -49,7 +49,7 @@ public:
     void reap(const TestTask& target) {
         require_equal(table_.find_slot(target.id), target.slot,
                       "reap targets the current public identity");
-        require_equal(table_.recycle_dead_slot(target.slot), 0,
+        require_equal(table_.recycle_dead_slot(target.slot), tinyos::TaskTable::RecycleResult::Ok,
                       "recycle a completed test record");
     }
 

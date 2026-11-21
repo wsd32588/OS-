@@ -31,6 +31,7 @@ add_library(tinyos_test_kernel STATIC
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_memory.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_address_space.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/mm/user_access.cpp"
+    "${TINYOS_SOURCE_DIR}/kernel/storage/block_cache.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/user/user_image.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/process/process.cpp"
     "${TINYOS_SOURCE_DIR}/kernel/task/task.cpp"

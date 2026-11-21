@@ -47,6 +47,9 @@ void boot_console(unsigned long hart_id, const void *device_tree);
 void boot_init_pmm(const void *device_tree);
 Sv39PageTable *boot_init_kernel_vm(const void *device_tree);
 uint64_t boot_enable_paging(Sv39PageTable *kernel_root);
+#if TINYOS_BLOCK_PROBE
+void boot_probe_block_read(void);
+#endif
 void boot_start_user(
     Sv39PageTable *kernel_root,
     uint64_t satp_value);

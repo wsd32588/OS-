@@ -18,6 +18,7 @@ int test_process_files();
 int test_kernel_console();
 int test_input_queue();
 int test_console_device();
+int test_block_cache();
 
 int main(void) {
     if (test_pmm() != 0) {
@@ -81,6 +82,10 @@ int main(void) {
     }
 
     if (test_console_device() != 0) {
+        return EXIT_FAILURE;
+    }
+
+    if (test_block_cache() != 0) {
         return EXIT_FAILURE;
     }
 

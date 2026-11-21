@@ -13,6 +13,7 @@ SYNC_DEST ?= /mnt/d/PROJECTS/C/tinyos
 OPTIMIZATION ?= -O0
 KERNEL_TRACE ?= 0
 CONSOLE_MODE ?= kdbg
+BLOCK_PROBE ?= 0
 
 ifeq ($(CONSOLE_MODE),kdbg)
 CONSOLE_USER_IO := 0
@@ -26,6 +27,11 @@ KERNEL_CONFIG_HEADER = build/kernel_config.h
 ifneq ($(KERNEL_TRACE),0)
 ifneq ($(KERNEL_TRACE),1)
 $(error KERNEL_TRACE must be 0 or 1)
+endif
+endif
+ifneq ($(BLOCK_PROBE),0)
+ifneq ($(BLOCK_PROBE),1)
+$(error BLOCK_PROBE must be 0 or 1)
 endif
 endif
 TASK_STRESS_ROUNDS ?= 500
@@ -119,24 +125,30 @@ OBJS = \
     lib/string.o \
     drivers/uart.o
 
+
 DEPS = $(OBJS:.o=.d) $(USER_OBJS:.o=.d)
 
 .PHONY: all user clean compdb debug qemu sync sync-dry-run test test-qemu test-stress test-process FORCE
 
 all: kernel.elf
 
-# Update the header only when its value changes, so switching trace modes also
-# rebuilds existing kernel objects without cleaning the workspace.
+# Rebuild kernel objects when a configuration value changes.
 $(KERNEL_CONFIG_HEADER): FORCE
 	@mkdir -p $(dir $@)
 	@printf '%s\n' \
 		'#define TINYOS_KERNEL_TRACE $(KERNEL_TRACE)' \
-		'#define TINYOS_CONSOLE_USER_IO $(CONSOLE_USER_IO)' > $@.tmp
+		'#define TINYOS_CONSOLE_USER_IO $(CONSOLE_USER_IO)' \
+		'#define TINYOS_BLOCK_PROBE $(BLOCK_PROBE)' > $@.tmp
 	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
 
 FORCE:
 
+ifeq ($(BLOCK_PROBE),1)
+OBJS += kernel/drivers/virtio_block.o kernel/storage/block_cache.o
+endif
+
 $(OBJS): $(KERNEL_CONFIG_HEADER)
+
 
 user: $(USER_BUILD_DIR)/demo.bin $(USER_BUILD_DIR)/worker.elf
 
